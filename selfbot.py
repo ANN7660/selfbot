@@ -33,10 +33,11 @@ def run_flask():
     app.run(host='0.0.0.0', port=port, use_reloader=False, threaded=True)
 
 def keep_alive():
+    """Démarrer Flask en thread daemon"""
     t = Thread(target=run_flask)
     t.daemon = True
     t.start()
-    time.sleep(2)  # Attendre que Flask démarre
+    # PAS de sleep ici - on laisse le thread principal continuer
 
 class DiscordSelfbot:
     def __init__(self, token):
@@ -222,15 +223,18 @@ if __name__ == "__main__":
     print("🚀 Démarrage du Selfbot Discord")
     print("=" * 60)
     
-    # Démarrer Flask
-    print("🌐 Démarrage de Flask...")
+    # Démarrer Flask en arrière-plan
     keep_alive()
-    print("✅ Flask actif sur port", os.getenv('PORT', 10000))
+    print("🌐 Flask lancé en arrière-plan sur port", os.getenv('PORT', 10000))
     
-    # Démarrer le bot Discord
-    print("🤖 Démarrage du bot Discord...")
+    # Petit délai pour que Flask bind le port
+    print("⏳ Attente 3s pour que Flask s'initialise...")
+    time.sleep(3)
+    
+    print("🤖 Lancement du bot Discord...")
     print("=" * 60)
     
+    # Démarrer le bot Discord sur le thread principal
     try:
         asyncio.run(main())
     except KeyboardInterrupt:
