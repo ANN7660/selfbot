@@ -1,5 +1,5 @@
-import requests
-import time
+import discord
+import asyncio
 import os
 from datetime import datetime
 
@@ -11,68 +11,65 @@ CLIENT_ID = '1410787199745888747'  # ID de ton application Discord
 IMAGE_NAME = 'logo_b2'  # Nom de ton image dans Art Assets
 # --------------------
 
-def update_presence(token):
-    """Met à jour la Rich Presence via l'API Discord Gateway"""
-    
-    url = "https://discord.com/api/v9/users/@me/settings"
-    
-    # Payload avec la Rich Presence complète
-    payload = {
-        "activities": [{
-            "type": 0,  # 0 = Joue à...
-            "name": "HK X B2",  # Nom du jeu/activité
-            "application_id": CLIENT_ID,  # Ton application
-            "details": "V1",  # Ligne du haut
-            "state": "guns.lol/17h40",  # Ligne du bas
-            "timestamps": {
-                "start": int(time.time() * 1000)  # Temps de début en millisecondes
-            },
-            "assets": {
-                "large_image": IMAGE_NAME,  # Grande image
-                "large_text": "HK X B2",  # Texte sur la grande image
-                "small_image": IMAGE_NAME,  # Petite image
-                "small_text": "En ligne"  # Texte sur la petite image
-            },
-            "buttons": [
-                "guns lol b2"  # Texte du bouton (l'URL est définie dans l'app Discord)
-            ],
-            "metadata": {
-                "button_urls": [
-                    "https://guns.lol/17h40"  # URL du bouton
-                ]
-            }
-        }]
-    }
-    
-    headers = {
-        "Authorization": token,
-        "Content-Type": "application/json",
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
-    }
-    
-    try:
-        response = requests.patch(url, json=payload, headers=headers)
+class RichPresenceSelfbot(discord.Client):
+    def __init__(self):
+        intents = discord.Intents.none()
+        super().__init__(intents=intents)
         
-        if response.status_code == 200:
-            print(f"✅ Rich Presence mise à jour avec succès !")
-            print(f"⏰ {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-            return True
-        else:
-            print(f"❌ Erreur {response.status_code}: {response.text}")
-            return False
-            
-    except Exception as e:
-        print(f"❌ Erreur de connexion: {e}")
-        return False
-
-def maintain_presence():
-    """Maintient la présence active en la rafraîchissant régulièrement"""
+    async def on_ready(self):
+        print(f'✅ Connecté en tant que {self.user.name} ({self.user.id})')
+        print(f'⏰ {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}')
+        print("-" * 60)
+        
+        await self.update_rich_presence()
+        
+        # Boucle de rafraîchissement
+        while True:
+            await asyncio.sleep(900)  # 15 minutes
+            print(f"\n🔄 Rafraîchissement... {datetime.now().strftime('%H:%M:%S')}")
+            await self.update_rich_presence()
     
+    async def update_rich_presence(self):
+        """Met à jour la Rich Presence avec images et boutons"""
+        try:
+            # Créer l'activité Rich Presence
+            activity = discord.Activity(
+                type=discord.ActivityType.playing,
+                name="HK X B2",  # Nom principal
+                application_id=CLIENT_ID,
+                state="guns.lol/17h40",  # Ligne du bas
+                details="V1",  # Ligne du haut
+                timestamps={
+                    'start': int(datetime.now().timestamp())
+                },
+                assets={
+                    'large_image': IMAGE_NAME,
+                    'large_text': 'HK X B2',
+                    'small_image': IMAGE_NAME,
+                    'small_text': 'En ligne'
+                },
+                buttons=[{
+                    'label': 'guns lol b2',
+                    'url': 'https://guns.lol/17h40'
+                }]
+            )
+            
+            await self.change_presence(
+                status=discord.Status.online,
+                activity=activity
+            )
+            
+            print('✨ Rich Presence mise à jour avec succès !')
+            
+        except Exception as e:
+            print(f'❌ Erreur lors de la mise à jour: {e}')
+
+async def main():
     TOKEN = os.getenv('DISCORD_TOKEN')
     
     if not TOKEN:
         print("❌ ERREUR: Variable DISCORD_TOKEN non définie")
-        print("📝 Sur Render: Ajoute DISCORD_TOKEN dans Environment Variables")
+        print("📝 Ajoute DISCORD_TOKEN dans les Environment Variables de Render")
         return
     
     print("🚀 Démarrage du selfbot Discord avec Rich Presence...")
@@ -82,24 +79,17 @@ def maintain_presence():
     print(f"🖼️  Image: {IMAGE_NAME}")
     print("-" * 60)
     
-    # Première mise à jour
-    if update_presence(TOKEN):
-        print("✨ Rich Presence active avec images et boutons !")
-        print("💡 Rafraîchissement automatique toutes les 15 minutes...")
+    client = RichPresenceSelfbot()
     
-    # Boucle de maintien
-    while True:
-        try:
-            time.sleep(900)  # 15 minutes
-            print("\n🔄 Rafraîchissement de la présence...")
-            update_presence(TOKEN)
-            
-        except KeyboardInterrupt:
-            print("\n⏹️  Arrêt du selfbot...")
-            break
-        except Exception as e:
-            print(f"❌ Erreur inattendue: {e}")
-            time.sleep(60)
+    try:
+        await client.start(TOKEN, bot=False)
+    except discord.LoginFailure:
+        print("❌ Token invalide ou compte banni")
+    except Exception as e:
+        print(f"❌ Erreur: {e}")
+    finally:
+        if not client.is_closed():
+            await client.close()
 
 if __name__ == "__main__":
-    maintain_presence()
+    asyncio.run(main())
