@@ -211,13 +211,29 @@ async def main():
     except Exception as e:
         print(f"❌ Erreur fatale: {e}")
 
+def run_bot():
+    """Lancer le bot Discord dans un thread séparé"""
+    asyncio.run(main())
+
 if __name__ == "__main__":
     # Démarrer Flask EN PREMIER
     keep_alive()
-    print("🌐 Flask démarré")
+    print("🌐 Flask démarré sur port", os.getenv('PORT', 10000))
     
     # Délai pour que Flask bind le port
-    time.sleep(3)
+    time.sleep(2)
     
-    # Démarrer le bot Discord
-    asyncio.run(main())
+    # Démarrer le bot Discord dans un thread séparé
+    bot_thread = Thread(target=run_bot)
+    bot_thread.daemon = True
+    bot_thread.start()
+    
+    print("🤖 Bot Discord lancé en arrière-plan")
+    print("=" * 60)
+    
+    # Garder le script actif
+    try:
+        while True:
+            time.sleep(60)
+    except KeyboardInterrupt:
+        print("\n⏹️  Arrêt...")
