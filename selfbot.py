@@ -1,4 +1,5 @@
 import asyncio
+import asyncio
 import websockets
 import json
 import os
@@ -49,19 +50,26 @@ class DiscordSelfbot:
         
     async def connect(self):
         """Connexion au Gateway Discord"""
-        print("🔌 Connexion au Gateway Discord...")
+        print("🔌 Connexion au Gateway Discord...", flush=True)
         
         try:
-            self.ws = await websockets.connect(GATEWAY_URL)
-            print("✅ WebSocket connecté")
+            print(f"DEBUG: Tentative de connexion à {GATEWAY_URL}", flush=True)
+            # Ajouter un timeout de 30 secondes
+            self.ws = await asyncio.wait_for(
+                websockets.connect(GATEWAY_URL),
+                timeout=30.0
+            )
+            print("✅ WebSocket connecté", flush=True)
             
             # Recevoir Hello et configurer heartbeat
-            hello = await self.ws.recv()
+            print("DEBUG: Attente du Hello...", flush=True)
+            hello = await asyncio.wait_for(self.ws.recv(), timeout=10.0)
             hello_data = json.loads(hello)
+            print(f"DEBUG: Reçu: {hello_data.get('op')}", flush=True)
             
             if hello_data['op'] == 10:  # Hello
                 self.heartbeat_interval = hello_data['d']['heartbeat_interval'] / 1000
-                print(f"💓 Heartbeat interval: {self.heartbeat_interval}s")
+                print(f"💓 Heartbeat interval: {self.heartbeat_interval}s", flush=True)
                 
                 # Démarrer heartbeat
                 asyncio.create_task(self.heartbeat())
@@ -72,8 +80,14 @@ class DiscordSelfbot:
                 # Écouter les événements
                 await self.listen()
                 
+        except asyncio.TimeoutError:
+            print(f"⏱️  TIMEOUT lors de la connexion WebSocket", flush=True)
+            await asyncio.sleep(5)
+            await self.connect()
         except Exception as e:
-            print(f"❌ Erreur de connexion: {e}")
+            print(f"❌ Erreur de connexion: {e}", flush=True)
+            import traceback
+            traceback.print_exc()
             await asyncio.sleep(5)
             await self.connect()
     
