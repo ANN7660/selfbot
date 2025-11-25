@@ -192,50 +192,61 @@ class DiscordSelfbot:
             await self.update_presence()
 
 async def main():
+    print("DEBUG: Entrée dans main()", flush=True)
     TOKEN = os.getenv('DISCORD_TOKEN')
     
-    print("=" * 60)
-    print("🚀 Selfbot Discord Rich Presence")
-    print("⚠️  Viole les ToS Discord - Risque de ban")
-    print("=" * 60)
-    print(f"🎮 Application: {CLIENT_ID}")
-    print(f"🖼️  Image: {IMAGE_NAME}")
-    print("=" * 60)
+    print("=" * 60, flush=True)
+    print("🚀 Selfbot Discord Rich Presence", flush=True)
+    print("⚠️  Viole les ToS Discord - Risque de ban", flush=True)
+    print("=" * 60, flush=True)
+    print(f"🎮 Application: {CLIENT_ID}", flush=True)
+    print(f"🖼️  Image: {IMAGE_NAME}", flush=True)
+    print("=" * 60, flush=True)
     
     if not TOKEN:
-        print("❌ DISCORD_TOKEN manquant !")
+        print("❌ DISCORD_TOKEN manquant !", flush=True)
         return
     
-    print(f"🔑 Token trouvé ({len(TOKEN)} caractères)")
-    print("=" * 60)
+    print(f"🔑 Token trouvé ({len(TOKEN)} caractères)", flush=True)
+    print("=" * 60, flush=True)
     
+    print("DEBUG: Création du bot...", flush=True)
     bot = DiscordSelfbot(TOKEN)
     
+    print("DEBUG: Avant bot.connect()", flush=True)
     try:
         await bot.connect()
     except KeyboardInterrupt:
-        print("\n⏹️  Arrêt...")
+        print("\n⏹️  Arrêt...", flush=True)
     except Exception as e:
-        print(f"❌ Erreur fatale: {e}")
+        print(f"❌ Erreur fatale: {e}", flush=True)
+        import traceback
+        traceback.print_exc()
 
 if __name__ == "__main__":
-    print("=" * 60)
-    print("🚀 Démarrage du Selfbot Discord")
-    print("=" * 60)
+    print("=" * 60, flush=True)
+    print("🚀 Démarrage du Selfbot Discord", flush=True)
+    print("=" * 60, flush=True)
     
     # Démarrer Flask en arrière-plan
     keep_alive()
-    print("🌐 Flask lancé en arrière-plan sur port", os.getenv('PORT', 10000))
+    print("🌐 Flask lancé en arrière-plan sur port", os.getenv('PORT', 10000), flush=True)
     
     # Petit délai pour que Flask bind le port
-    print("⏳ Attente 3s pour que Flask s'initialise...")
+    print("⏳ Attente 3s pour que Flask s'initialise...", flush=True)
     time.sleep(3)
     
-    print("🤖 Lancement du bot Discord...")
-    print("=" * 60)
+    print("🤖 Lancement du bot Discord...", flush=True)
+    print("=" * 60, flush=True)
+    print("DEBUG: Avant asyncio.run()", flush=True)
     
     # Démarrer le bot Discord sur le thread principal
     try:
         asyncio.run(main())
+        print("DEBUG: Après asyncio.run()", flush=True)
     except KeyboardInterrupt:
-        print("\n⏹️  Arrêt...")
+        print("\n⏹️  Arrêt...", flush=True)
+    except Exception as e:
+        print(f"❌ ERREUR FATALE: {e}", flush=True)
+        import traceback
+        traceback.print_exc()
