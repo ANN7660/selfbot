@@ -24,7 +24,8 @@ def home():
     return "Discord Presence Active! ✨"
 
 def run_flask():
-    app.run(host='0.0.0.0', port=10000)
+    port = int(os.getenv('PORT', 10000))
+    app.run(host='0.0.0.0', port=port)
 
 def keep_alive():
     t = Thread(target=run_flask)
@@ -58,7 +59,7 @@ class DiscordSelfbot:
                 # Démarrer heartbeat
                 asyncio.create_task(self.heartbeat())
                 
-                # Identifier
+                # Identifier (payload MINIMAL)
                 await self.identify()
                 
                 # Écouter les événements
@@ -70,33 +71,24 @@ class DiscordSelfbot:
             await self.connect()
     
     async def identify(self):
-        """Envoyer le payload d'identification (simplifié)"""
+        """Envoyer le payload d'identification MINIMAL"""
         print("🔑 Authentification...")
         
+        # Payload ULTRA simplifié pour éviter "message too big"
         identify_payload = {
             "op": 2,
             "d": {
                 "token": self.token,
                 "properties": {
-                    "$os": "windows",
-                    "$browser": "chrome",
-                    "$device": "pc"
-                },
-                "presence": {
-                    "status": "online",
-                    "since": None,
-                    "activities": [{
-                        "type": 0,
-                        "name": "HK X B2",
-                        "application_id": CLIENT_ID
-                    }],
-                    "afk": False
+                    "os": "windows",
+                    "browser": "chrome",
+                    "device": "pc"
                 }
             }
         }
         
         await self.ws.send(json.dumps(identify_payload))
-        print("📤 Payload d'identification envoyé")
+        print("📤 Payload envoyé")
     
     async def heartbeat(self):
         """Envoyer des heartbeats réguliers"""
@@ -108,14 +100,14 @@ class DiscordSelfbot:
                     "d": self.seq
                 }
                 await self.ws.send(json.dumps(heartbeat_payload))
-                print(f"💓 Heartbeat envoyé - {datetime.now().strftime('%H:%M:%S')}")
+                print(f"💓 Heartbeat - {datetime.now().strftime('%H:%M:%S')}")
             except Exception as e:
                 print(f"❌ Erreur heartbeat: {e}")
                 break
     
     async def update_presence(self):
-        """Mettre à jour la Rich Presence"""
-        print("📡 Mise à jour de la Rich Presence...")
+        """Mettre à jour la Rich Presence APRÈS connexion"""
+        print("📡 Mise à jour Rich Presence...")
         
         presence_payload = {
             "op": 3,
@@ -128,17 +120,11 @@ class DiscordSelfbot:
                     "details": "V1",
                     "state": "guns.lol/17h40",
                     "timestamps": {
-                        "start": int(time.time())
+                        "start": int(time.time() * 1000)
                     },
                     "assets": {
                         "large_image": IMAGE_NAME,
-                        "large_text": "HK X B2",
-                        "small_image": IMAGE_NAME,
-                        "small_text": "En ligne"
-                    },
-                    "buttons": ["guns lol b2"],
-                    "metadata": {
-                        "button_urls": ["https://guns.lol/17h40"]
+                        "large_text": "HK X B2"
                     }
                 }],
                 "since": None,
@@ -148,7 +134,7 @@ class DiscordSelfbot:
         
         try:
             await self.ws.send(json.dumps(presence_payload))
-            print("✅ Rich Presence mise à jour")
+            print("✅ Rich Presence mise à jour !")
         except Exception as e:
             print(f"❌ Erreur mise à jour: {e}")
     
@@ -166,31 +152,36 @@ class DiscordSelfbot:
             if op == 0 and data['t'] == 'READY':
                 user = data['d']['user']
                 self.session_id = data['d']['session_id']
-                print(f"✅ Connecté: {user['username']} (ID: {user['id']})")
-                print(f"📊 Session: {self.session_id}")
-                print("-" * 60)
-                print("✨ Rich Presence active !")
+                print("=" * 60)
+                print(f"✅ CONNECTÉ: {user['username']} (ID: {user['id']})")
+                print(f"📊 Session: {self.session_id[:20]}...")
+                print("=" * 60)
+                
+                # Mettre à jour la présence MAINTENANT
+                await self.update_presence()
+                
+                print("✨ Rich Presence active avec images !")
                 print("💡 Rafraîchissement toutes les 15 minutes")
-                print("-" * 60)
+                print("=" * 60)
                 
                 # Démarrer le rafraîchissement automatique
                 asyncio.create_task(self.refresh_loop())
             
             # Heartbeat ACK
             elif op == 11:
-                pass  # Heartbeat acknowledged
+                pass  # OK
             
             # Reconnect
             elif op == 7:
-                print("🔄 Reconnexion demandée par Discord...")
+                print("🔄 Reconnexion demandée...")
                 await self.ws.close()
                 await self.connect()
     
     async def refresh_loop(self):
-        """Rafraîchir la présence toutes les 15 minutes"""
+        """Rafraîchir toutes les 15 minutes"""
         while True:
-            await asyncio.sleep(900)  # 15 minutes
-            print(f"\n🔄 Rafraîchissement automatique - {datetime.now().strftime('%H:%M:%S')}")
+            await asyncio.sleep(900)  # 15 min
+            print(f"\n🔄 Rafraîchissement - {datetime.now().strftime('%H:%M:%S')}")
             await self.update_presence()
 
 async def main():
@@ -221,13 +212,12 @@ async def main():
         print(f"❌ Erreur fatale: {e}")
 
 if __name__ == "__main__":
-    # Démarrer Flask AVANT asyncio
+    # Démarrer Flask EN PREMIER
     keep_alive()
-    print("🌐 Serveur Flask démarré sur port 10000")
-    print("=" * 60)
+    print("🌐 Flask démarré")
     
-    # Petit délai pour que Flask s'initialise
-    time.sleep(2)
+    # Délai pour que Flask bind le port
+    time.sleep(3)
     
     # Démarrer le bot Discord
     asyncio.run(main())
