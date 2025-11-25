@@ -35,10 +35,10 @@ class RichPresenceSelfbot(discord.Client):
             # Créer l'activité Rich Presence
             activity = discord.Activity(
                 type=discord.ActivityType.playing,
-                name="HK X B2",  # Nom principal
+                name="HK X B2",
                 application_id=CLIENT_ID,
-                state="guns.lol/17h40",  # Ligne du bas
-                details="V1",  # Ligne du haut
+                state="guns.lol/17h40",
+                details="V1",
                 timestamps={
                     'start': int(datetime.now().timestamp())
                 },
