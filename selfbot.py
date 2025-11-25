@@ -4,6 +4,8 @@ import json
 import os
 import time
 from datetime import datetime
+from flask import Flask
+from threading import Thread
 
 # ⚠️ ATTENTION: Utiliser un selfbot viole les ToS Discord
 # Risque de BAN PERMANENT de ton compte
@@ -13,6 +15,21 @@ CLIENT_ID = '1410787199745888747'
 IMAGE_NAME = 'logo_b2'
 GATEWAY_URL = "wss://gateway.discord.gg/?v=10&encoding=json"
 # --------------------
+
+# Flask pour Render
+app = Flask('')
+
+@app.route('/')
+def home():
+    return "Discord Presence Active! ✨"
+
+def run_flask():
+    app.run(host='0.0.0.0', port=10000)
+
+def keep_alive():
+    t = Thread(target=run_flask)
+    t.daemon = True
+    t.start()
 
 class DiscordSelfbot:
     def __init__(self, token):
@@ -53,7 +70,7 @@ class DiscordSelfbot:
             await self.connect()
     
     async def identify(self):
-        """Envoyer le payload d'identification"""
+        """Envoyer le payload d'identification (simplifié)"""
         print("🔑 Authentification...")
         
         identify_payload = {
@@ -67,26 +84,13 @@ class DiscordSelfbot:
                 },
                 "presence": {
                     "status": "online",
+                    "since": None,
                     "activities": [{
                         "type": 0,
                         "name": "HK X B2",
-                        "application_id": CLIENT_ID,
-                        "details": "V1",
-                        "state": "guns.lol/17h40",
-                        "timestamps": {
-                            "start": int(time.time())
-                        },
-                        "assets": {
-                            "large_image": IMAGE_NAME,
-                            "large_text": "HK X B2",
-                            "small_image": IMAGE_NAME,
-                            "small_text": "En ligne"
-                        },
-                        "buttons": ["CLICK"],
-                        "metadata": {
-                            "button_urls": ["https://guns.lol/17h40"]
-                        }
-                    }]
+                        "application_id": CLIENT_ID
+                    }],
+                    "afk": False
                 }
             }
         }
@@ -121,15 +125,15 @@ class DiscordSelfbot:
                     "type": 0,
                     "name": "HK X B2",
                     "application_id": CLIENT_ID,
-                    "details": "HK OR B2 ??",
+                    "details": "V1",
                     "state": "guns.lol/17h40",
                     "timestamps": {
                         "start": int(time.time())
                     },
                     "assets": {
-                        "large_image": logo_b2,
-                        "large_text": "B2 ON TOP",
-                        "small_image": logo_petit_b2,
+                        "large_image": IMAGE_NAME,
+                        "large_text": "HK X B2",
+                        "small_image": IMAGE_NAME,
                         "small_text": "En ligne"
                     },
                     "buttons": ["guns lol b2"],
@@ -217,5 +221,13 @@ async def main():
         print(f"❌ Erreur fatale: {e}")
 
 if __name__ == "__main__":
+    # Démarrer Flask AVANT asyncio
+    keep_alive()
+    print("🌐 Serveur Flask démarré sur port 10000")
+    print("=" * 60)
+    
+    # Petit délai pour que Flask s'initialise
+    time.sleep(2)
+    
+    # Démarrer le bot Discord
     asyncio.run(main())
-
