@@ -82,7 +82,7 @@ class DiscordSelfbot:
                             "small_image": IMAGE_NAME,
                             "small_text": "En ligne"
                         },
-                        "buttons": ["guns lol b2"],
+                        "buttons": ["CLICK"],
                         "metadata": {
                             "button_urls": ["https://guns.lol/17h40"]
                         }
@@ -121,15 +121,15 @@ class DiscordSelfbot:
                     "type": 0,
                     "name": "HK X B2",
                     "application_id": CLIENT_ID,
-                    "details": "V1",
+                    "details": "HK OR B2 ??",
                     "state": "guns.lol/17h40",
                     "timestamps": {
                         "start": int(time.time())
                     },
                     "assets": {
-                        "large_image": IMAGE_NAME,
-                        "large_text": "HK X B2",
-                        "small_image": IMAGE_NAME,
+                        "large_image": logo_b2,
+                        "large_text": "B2 ON TOP",
+                        "small_image": logo_petit_b2,
                         "small_text": "En ligne"
                     },
                     "buttons": ["guns lol b2"],
@@ -218,3 +218,4 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
+
