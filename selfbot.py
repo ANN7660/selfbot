@@ -163,6 +163,9 @@ class DiscordSelfbot:
         # Timer commence au lancement du bot (00:00 puis compte)
         start_timestamp = self.start_time
         
+        # Log pour debug
+        logger.info(f"🕐 Timer start_timestamp: {start_timestamp} (timestamp actuel: {int(time.time())})")
+        
         payload = {
             "op": 3,
             "d": {
