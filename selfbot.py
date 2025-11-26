@@ -168,19 +168,10 @@ class DiscordSelfbot:
                 "status": "online",
                 "activities": [{
                     "type": 0,
-                    "name": "🔥 B2 ON TOP 🔥",  # CHANGÉ pour forcer refresh
-                    "application_id": CLIENT_ID,
-                    "details": "💎 B2 💎",  # CHANGÉ aussi
+                    "name": "🌍 B2 ON TOP",
+                    "details": "🔥 B2",
                     "timestamps": {
                         "start": correct_timestamp
-                    },
-                    "assets": {
-                        "large_image": IMAGE_NAME,
-                        "large_text": "B2 ON TOP"
-                    },
-                    "buttons": ["guns.lol"],
-                    "metadata": {
-                        "button_urls": ["https://guns.lol/17h40"]
                     }
                 }],
                 "since": None,
