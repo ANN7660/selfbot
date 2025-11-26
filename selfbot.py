@@ -106,12 +106,12 @@ class DiscordSelfbot:
         print("📤 Payload envoyé", flush=True)
     
     async def heartbeat(self):
-        """Heartbeats réguliers"""
+        """Heartbeats réguliers (silencieux)"""
         while True:
             try:
                 await asyncio.sleep(self.heartbeat_interval)
                 await self.ws.send(json.dumps({"op": 1, "d": self.seq}))
-                print(f"💓 {datetime.now().strftime('%H:%M:%S')}", flush=True)
+                # Heartbeat envoyé sans affichage
             except Exception as e:
                 print(f"❌ Heartbeat erreur: {e}", flush=True)
                 break
@@ -175,24 +175,13 @@ class DiscordSelfbot:
                 await self.update_presence()
                 
                 print("✨ Rich Presence active !", flush=True)
-                print("💡 Rafraîchissement toutes les 15 min", flush=True)
                 print("=" * 60, flush=True)
-                
-                # Rafraîchissement automatique
-                asyncio.create_task(self.refresh_loop())
             
             # Reconnect
             elif op == 7:
                 print("🔄 Reconnexion...", flush=True)
                 await self.ws.close()
                 await self.connect()
-    
-    async def refresh_loop(self):
-        """Rafraîchir toutes les 15 minutes"""
-        while True:
-            await asyncio.sleep(900)
-            print(f"\n🔄 Rafraîchissement - {datetime.now().strftime('%H:%M:%S')}", flush=True)
-            await self.update_presence()
 
 async def main():
     TOKEN = os.getenv('DISCORD_TOKEN')
