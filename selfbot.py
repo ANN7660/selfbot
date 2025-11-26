@@ -8,7 +8,7 @@ from flask import Flask
 from threading import Thread
 
 # Configuration
-CLIENT_ID = '1442957097385066708'  # Changé le dernier chiffre
+CLIENT_ID = '1442957097385066707'
 IMAGE_NAME = 'logo_b2'
 GATEWAY_URL = "wss://gateway.discord.gg/?v=10&encoding=json"
 
@@ -48,9 +48,8 @@ class DiscordSelfbot:
         self.heartbeat_task = None
         self.last_heartbeat_ack = True
         self.reconnect_attempts = 0
-        self.max_reconnect_attempts = float('inf')  # Reconnexion infinie
+        self.max_reconnect_attempts = float('inf')
         self.consecutive_failures = 0
-        self.start_time = int(time.time())  # Timer depuis le lancement
         
     async def connect(self):
         """Connexion au gateway Discord avec gestion d'erreurs améliorée"""
@@ -65,23 +64,21 @@ class DiscordSelfbot:
             
             hello = json.loads(await self.ws.recv())
             
-            if hello['op'] == 10:  # Opcode HELLO
+            if hello['op'] == 10:
                 self.heartbeat_interval = hello['d']['heartbeat_interval'] / 1000
                 logger.info(f"Heartbeat interval: {self.heartbeat_interval}s")
                 
-                # Démarrer le heartbeat
                 if self.heartbeat_task:
                     self.heartbeat_task.cancel()
                 self.heartbeat_task = asyncio.create_task(self.heartbeat())
                 
-                # Identifier ou reprendre la session
                 if self.session_id:
                     await self.resume()
                 else:
                     await self.identify()
                 
                 self.reconnect_attempts = 0
-                self.consecutive_failures = 0  # Reset sur succès
+                self.consecutive_failures = 0
                 await self.listen()
                 
         except websockets.exceptions.ConnectionClosed as e:
@@ -96,7 +93,6 @@ class DiscordSelfbot:
         self.reconnect_attempts += 1
         self.consecutive_failures += 1
         
-        # Backoff exponentiel plafonné à 5 minutes
         wait_time = min(5 * (2 ** min(self.consecutive_failures - 1, 5)), 300)
         logger.info(f"⏳ Reconnexion dans {wait_time}s (tentative #{self.reconnect_attempts})")
         await asyncio.sleep(wait_time)
@@ -105,7 +101,7 @@ class DiscordSelfbot:
             await self.connect()
         except Exception as e:
             logger.error(f"Échec de reconnexion: {e}")
-            await self.handle_reconnect()  # Réessayer indéfiniment
+            await self.handle_reconnect()
     
     async def identify(self):
         """Envoi du payload d'identification"""
@@ -160,23 +156,23 @@ class DiscordSelfbot:
     
     async def update_presence(self):
         """Mise à jour de la présence Discord"""
-        # Utilise le timestamp RÉEL actuel (corrige le décalage serveur)
-        start_timestamp = int(time.time()) - 1
         
-        # Log pour debug
-        logger.info(f"🕐 Timer start_timestamp: {start_timestamp} (timestamp actuel: {int(time.time())})")
+        # Timestamp fixe novembre 2024 (corrige le décalage Render)
+        correct_timestamp = 1732660000
+        
+        logger.info(f"🕐 Timer timestamp: {correct_timestamp}")
         
         payload = {
             "op": 3,
             "d": {
                 "status": "online",
                 "activities": [{
-                    "type": 0,  # Type: Playing
-                    "name": "🌍 B2 ON TOP",  # Remis le nom original
+                    "type": 0,
+                    "name": "🌍 B2 ON TOP",
                     "application_id": CLIENT_ID,
                     "details": "🔥 B2",
                     "timestamps": {
-                        "start": start_timestamp
+                        "start": correct_timestamp
                     },
                     "assets": {
                         "large_image": IMAGE_NAME,
@@ -203,25 +199,23 @@ class DiscordSelfbot:
                 op = data.get('op')
                 t = data.get('t')
                 
-                # Mise à jour de la séquence
                 if data.get('s'):
                     self.seq = data['s']
                 
-                # Gestion des opcodes
-                if op == 0:  # Dispatch
+                if op == 0:
                     await self.handle_dispatch(t, data['d'])
-                elif op == 1:  # Heartbeat demandé
+                elif op == 1:
                     await self.ws.send(json.dumps({"op": 1, "d": self.seq}))
-                elif op == 7:  # Reconnect
+                elif op == 7:
                     logger.info("Reconnexion demandée par Discord")
                     await self.ws.close()
                     await self.connect()
-                elif op == 9:  # Invalid Session
+                elif op == 9:
                     logger.warning("Session invalide")
                     self.session_id = None
                     await asyncio.sleep(5)
                     await self.identify()
-                elif op == 11:  # Heartbeat ACK
+                elif op == 11:
                     self.last_heartbeat_ack = True
                     logger.debug("Heartbeat ACK reçu")
                     
