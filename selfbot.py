@@ -172,7 +172,7 @@ class DiscordSelfbot:
                 "status": "online",
                 "activities": [{
                     "type": 0,  # Type: Playing
-                    "name": "🌍 B2 ON TOP",
+                    "name": "🔥 B2 ON TOP",  # NOM CHANGÉ pour forcer refresh
                     "application_id": CLIENT_ID,
                     "details": "🔥 B2",
                     "timestamps": {
