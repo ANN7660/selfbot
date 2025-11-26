@@ -11,7 +11,7 @@ from threading import Thread
 # Risque de BAN PERMANENT de ton compte
 
 # --- CONFIGURATION ---
-CLIENT_ID = '1410787199745888747'
+CLIENT_ID = '1442957097385066707'
 LARGE_IMAGE = 'logo_b2'           # Grande image
 SMALL_IMAGE = 'logo_petit_b2'     # Petite image
 GATEWAY_URL = "wss://gateway.discord.gg/?v=10&encoding=json"
