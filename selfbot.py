@@ -126,14 +126,14 @@ class DiscordSelfbot:
                 "status": "online",
                 "activities": [{
                     "type": 0,
-                    "name": "HK X B2",
+                    "name": "B2 ON TOP",
                     "application_id": CLIENT_ID,
-                    "details": "V1",
-                    "state": "guns.lol/17h40",
+                    "details": "guns.lol/17h40",
+                    "state": "",
                     "timestamps": {"start": int(time.time() * 1000)},
                     "assets": {
                         "large_image": LARGE_IMAGE,
-                        "large_text": "HK X B2",
+                        "large_text": "B2 ON TOP",
                         "small_image": SMALL_IMAGE,
                         "small_text": "En ligne"
                     },
@@ -166,6 +166,7 @@ class DiscordSelfbot:
                 self.session_id = data['d']['session_id']
                 print("=" * 60, flush=True)
                 print(f"✅ CONNECTÉ: {user['username']}", flush=True)
+                print(f"🎮 Joue à: B2 ON TOP", flush=True)
                 print(f"🖼️  Grande image: {LARGE_IMAGE}", flush=True)
                 print(f"🔹 Petite image: {SMALL_IMAGE}", flush=True)
                 print("=" * 60, flush=True)
@@ -201,6 +202,7 @@ async def main():
     print("⚠️  Viole les ToS - Risque de ban", flush=True)
     print("=" * 60, flush=True)
     print(f"🎮 App: {CLIENT_ID}", flush=True)
+    print(f"🎯 Joue à: B2 ON TOP", flush=True)
     print(f"🖼️  Grande image: {LARGE_IMAGE}", flush=True)
     print(f"🔹 Petite image: {SMALL_IMAGE}", flush=True)
     print("=" * 60, flush=True)
