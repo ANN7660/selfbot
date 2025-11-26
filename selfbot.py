@@ -160,8 +160,8 @@ class DiscordSelfbot:
     
     async def update_presence(self):
         """Mise à jour de la présence Discord"""
-        # Timer commence au lancement du bot (00:00 puis compte)
-        start_timestamp = self.start_time
+        # Utilise le timestamp RÉEL actuel (corrige le décalage serveur)
+        start_timestamp = int(time.time()) - 1
         
         # Log pour debug
         logger.info(f"🕐 Timer start_timestamp: {start_timestamp} (timestamp actuel: {int(time.time())})")
