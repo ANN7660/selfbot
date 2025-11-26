@@ -67,7 +67,7 @@ class DiscordSelfbot:
             await self.ws.send(json.dumps({"op": 1, "d": self.seq}))
 
     async def update_presence(self):
-        start_timestamp = int(time.time() * 1000) - (9999 * 3600 * 1000)
+        start_timestamp = 0
 
         payload = {
             "op": 3,
