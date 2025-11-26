@@ -8,7 +8,7 @@ from flask import Flask
 from threading import Thread
 
 # Configuration
-CLIENT_ID = '1442957097385066707'
+CLIENT_ID = '1442957097385066708'  # Changé le dernier chiffre
 IMAGE_NAME = 'logo_b2'
 GATEWAY_URL = "wss://gateway.discord.gg/?v=10&encoding=json"
 
@@ -172,7 +172,7 @@ class DiscordSelfbot:
                 "status": "online",
                 "activities": [{
                     "type": 0,  # Type: Playing
-                    "name": "🔥 B2 ON TOP",  # NOM CHANGÉ pour forcer refresh
+                    "name": "🌍 B2 ON TOP",  # Remis le nom original
                     "application_id": CLIENT_ID,
                     "details": "🔥 B2",
                     "timestamps": {
