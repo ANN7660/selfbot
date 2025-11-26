@@ -1,5 +1,4 @@
 import asyncio
-import asyncio
 import websockets
 import json
 import os
@@ -13,7 +12,8 @@ from threading import Thread
 
 # --- CONFIGURATION ---
 CLIENT_ID = '1410787199745888747'
-IMAGE_NAME = 'logo_b2'
+LARGE_IMAGE = 'logo_b2'           # Grande image
+SMALL_IMAGE = 'logo_petit_b2'     # Petite image
 GATEWAY_URL = "wss://gateway.discord.gg/?v=10&encoding=json"
 # --------------------
 
@@ -25,20 +25,16 @@ def home():
     return "Discord Presence Active! ✨"
 
 def run_flask():
-    """Flask en mode thread avec suppression des logs"""
     import logging
     log = logging.getLogger('werkzeug')
     log.setLevel(logging.ERROR)
-    
     port = int(os.getenv('PORT', 10000))
     app.run(host='0.0.0.0', port=port, use_reloader=False, threaded=True)
 
 def keep_alive():
-    """Démarrer Flask en thread daemon"""
     t = Thread(target=run_flask)
     t.daemon = True
     t.start()
-    # PAS de sleep ici - on laisse le thread principal continuer
 
 class DiscordSelfbot:
     def __init__(self, token):
@@ -53,53 +49,51 @@ class DiscordSelfbot:
         print("🔌 Connexion au Gateway Discord...", flush=True)
         
         try:
-            print(f"DEBUG: Tentative de connexion à {GATEWAY_URL}", flush=True)
-            # Ajouter un timeout de 30 secondes
+            # AUGMENTER LA LIMITE à 10MB pour recevoir le READY event
             self.ws = await asyncio.wait_for(
-                websockets.connect(GATEWAY_URL),
+                websockets.connect(
+                    GATEWAY_URL,
+                    max_size=10 * 1024 * 1024  # 10 MB au lieu de 1 MB
+                ),
                 timeout=30.0
             )
-            print("✅ WebSocket connecté", flush=True)
+            print("✅ WebSocket connecté (limite 10MB)", flush=True)
             
-            # Recevoir Hello et configurer heartbeat
-            print("DEBUG: Attente du Hello...", flush=True)
+            # Recevoir Hello
             hello = await asyncio.wait_for(self.ws.recv(), timeout=10.0)
             hello_data = json.loads(hello)
-            print(f"DEBUG: Reçu: {hello_data.get('op')}", flush=True)
             
             if hello_data['op'] == 10:  # Hello
                 self.heartbeat_interval = hello_data['d']['heartbeat_interval'] / 1000
-                print(f"💓 Heartbeat interval: {self.heartbeat_interval}s", flush=True)
+                print(f"💓 Heartbeat: {self.heartbeat_interval}s", flush=True)
                 
                 # Démarrer heartbeat
                 asyncio.create_task(self.heartbeat())
                 
-                # Identifier (payload MINIMAL)
+                # Identifier
                 await self.identify()
                 
                 # Écouter les événements
                 await self.listen()
                 
         except asyncio.TimeoutError:
-            print(f"⏱️  TIMEOUT lors de la connexion WebSocket", flush=True)
+            print(f"⏱️  Timeout - Reconnexion dans 5s...", flush=True)
             await asyncio.sleep(5)
             await self.connect()
         except Exception as e:
-            print(f"❌ Erreur de connexion: {e}", flush=True)
-            import traceback
-            traceback.print_exc()
+            print(f"❌ Erreur: {e}", flush=True)
             await asyncio.sleep(5)
             await self.connect()
     
     async def identify(self):
-        """Envoyer le payload d'identification MINIMAL"""
-        print("🔑 Authentification...")
+        """Authentification avec intents minimaux"""
+        print("🔑 Authentification...", flush=True)
         
-        # Payload ULTRA simplifié pour éviter "message too big"
         identify_payload = {
             "op": 2,
             "d": {
                 "token": self.token,
+                "intents": 0,  # Aucun intent (on veut juste la présence)
                 "properties": {
                     "os": "windows",
                     "browser": "chrome",
@@ -109,26 +103,22 @@ class DiscordSelfbot:
         }
         
         await self.ws.send(json.dumps(identify_payload))
-        print("📤 Payload envoyé")
+        print("📤 Payload envoyé", flush=True)
     
     async def heartbeat(self):
-        """Envoyer des heartbeats réguliers"""
+        """Heartbeats réguliers"""
         while True:
             try:
                 await asyncio.sleep(self.heartbeat_interval)
-                heartbeat_payload = {
-                    "op": 1,
-                    "d": self.seq
-                }
-                await self.ws.send(json.dumps(heartbeat_payload))
-                print(f"💓 Heartbeat - {datetime.now().strftime('%H:%M:%S')}")
+                await self.ws.send(json.dumps({"op": 1, "d": self.seq}))
+                print(f"💓 {datetime.now().strftime('%H:%M:%S')}", flush=True)
             except Exception as e:
-                print(f"❌ Erreur heartbeat: {e}")
+                print(f"❌ Heartbeat erreur: {e}", flush=True)
                 break
     
     async def update_presence(self):
-        """Mettre à jour la Rich Presence APRÈS connexion"""
-        print("📡 Mise à jour Rich Presence...")
+        """Mettre à jour la Rich Presence avec 2 images"""
+        print("📡 Mise à jour Rich Presence...", flush=True)
         
         presence_payload = {
             "op": 3,
@@ -140,13 +130,15 @@ class DiscordSelfbot:
                     "application_id": CLIENT_ID,
                     "details": "V1",
                     "state": "guns.lol/17h40",
-                    "timestamps": {
-                        "start": int(time.time() * 1000)
-                    },
+                    "timestamps": {"start": int(time.time() * 1000)},
                     "assets": {
-                        "large_image": IMAGE_NAME,
-                        "large_text": "HK X B2"
-                    }
+                        "large_image": LARGE_IMAGE,
+                        "large_text": "HK X B2",
+                        "small_image": SMALL_IMAGE,
+                        "small_text": "En ligne"
+                    },
+                    "buttons": ["guns lol b2"],
+                    "metadata": {"button_urls": ["https://guns.lol/17h40"]}
                 }],
                 "since": None,
                 "afk": False
@@ -155,112 +147,79 @@ class DiscordSelfbot:
         
         try:
             await self.ws.send(json.dumps(presence_payload))
-            print("✅ Rich Presence mise à jour !")
+            print("✅ Rich Presence mise à jour avec 2 images !", flush=True)
         except Exception as e:
-            print(f"❌ Erreur mise à jour: {e}")
+            print(f"❌ Erreur: {e}", flush=True)
     
     async def listen(self):
-        """Écouter les événements du Gateway"""
+        """Écouter les événements"""
         async for message in self.ws:
             data = json.loads(message)
             op = data['op']
             
-            # Sauvegarder le numéro de séquence
             if data.get('s'):
                 self.seq = data['s']
             
-            # Ready event
+            # READY event
             if op == 0 and data['t'] == 'READY':
                 user = data['d']['user']
                 self.session_id = data['d']['session_id']
-                print("=" * 60)
-                print(f"✅ CONNECTÉ: {user['username']} (ID: {user['id']})")
-                print(f"📊 Session: {self.session_id[:20]}...")
-                print("=" * 60)
+                print("=" * 60, flush=True)
+                print(f"✅ CONNECTÉ: {user['username']}", flush=True)
+                print(f"🖼️  Grande image: {LARGE_IMAGE}", flush=True)
+                print(f"🔹 Petite image: {SMALL_IMAGE}", flush=True)
+                print("=" * 60, flush=True)
                 
-                # Mettre à jour la présence MAINTENANT
+                # Mettre à jour la présence
                 await self.update_presence()
                 
-                print("✨ Rich Presence active avec images !")
-                print("💡 Rafraîchissement toutes les 15 minutes")
-                print("=" * 60)
+                print("✨ Rich Presence active !", flush=True)
+                print("💡 Rafraîchissement toutes les 15 min", flush=True)
+                print("=" * 60, flush=True)
                 
-                # Démarrer le rafraîchissement automatique
+                # Rafraîchissement automatique
                 asyncio.create_task(self.refresh_loop())
-            
-            # Heartbeat ACK
-            elif op == 11:
-                pass  # OK
             
             # Reconnect
             elif op == 7:
-                print("🔄 Reconnexion demandée...")
+                print("🔄 Reconnexion...", flush=True)
                 await self.ws.close()
                 await self.connect()
     
     async def refresh_loop(self):
         """Rafraîchir toutes les 15 minutes"""
         while True:
-            await asyncio.sleep(900)  # 15 min
-            print(f"\n🔄 Rafraîchissement - {datetime.now().strftime('%H:%M:%S')}")
+            await asyncio.sleep(900)
+            print(f"\n🔄 Rafraîchissement - {datetime.now().strftime('%H:%M:%S')}", flush=True)
             await self.update_presence()
 
 async def main():
-    print("DEBUG: Entrée dans main()", flush=True)
     TOKEN = os.getenv('DISCORD_TOKEN')
     
     print("=" * 60, flush=True)
     print("🚀 Selfbot Discord Rich Presence", flush=True)
-    print("⚠️  Viole les ToS Discord - Risque de ban", flush=True)
+    print("⚠️  Viole les ToS - Risque de ban", flush=True)
     print("=" * 60, flush=True)
-    print(f"🎮 Application: {CLIENT_ID}", flush=True)
-    print(f"🖼️  Image: {IMAGE_NAME}", flush=True)
+    print(f"🎮 App: {CLIENT_ID}", flush=True)
+    print(f"🖼️  Grande image: {LARGE_IMAGE}", flush=True)
+    print(f"🔹 Petite image: {SMALL_IMAGE}", flush=True)
     print("=" * 60, flush=True)
     
     if not TOKEN:
         print("❌ DISCORD_TOKEN manquant !", flush=True)
         return
     
-    print(f"🔑 Token trouvé ({len(TOKEN)} caractères)", flush=True)
-    print("=" * 60, flush=True)
+    print(f"🔑 Token OK ({len(TOKEN)} chars)", flush=True)
     
-    print("DEBUG: Création du bot...", flush=True)
     bot = DiscordSelfbot(TOKEN)
-    
-    print("DEBUG: Avant bot.connect()", flush=True)
-    try:
-        await bot.connect()
-    except KeyboardInterrupt:
-        print("\n⏹️  Arrêt...", flush=True)
-    except Exception as e:
-        print(f"❌ Erreur fatale: {e}", flush=True)
-        import traceback
-        traceback.print_exc()
+    await bot.connect()
 
 if __name__ == "__main__":
-    print("=" * 60, flush=True)
-    print("🚀 Démarrage du Selfbot Discord", flush=True)
-    print("=" * 60, flush=True)
-    
-    # Démarrer Flask en arrière-plan
     keep_alive()
-    print("🌐 Flask lancé en arrière-plan sur port", os.getenv('PORT', 10000), flush=True)
+    print("🌐 Flask démarré", flush=True)
+    time.sleep(2)
     
-    # Petit délai pour que Flask bind le port
-    print("⏳ Attente 3s pour que Flask s'initialise...", flush=True)
-    time.sleep(3)
-    
-    print("🤖 Lancement du bot Discord...", flush=True)
-    print("=" * 60, flush=True)
-    print("DEBUG: Avant asyncio.run()", flush=True)
-    
-    # Démarrer le bot Discord sur le thread principal
     try:
         asyncio.run(main())
-        print("DEBUG: Après asyncio.run()", flush=True)
     except KeyboardInterrupt:
-        print("\n⏹️  Arrêt...", flush=True)
-    except Exception as e:
-        print(f"❌ ERREUR FATALE: {e}", flush=True)
-        import traceback
-        traceback.print_exc()
+        print("\n⏹️  Arrêt", flush=True)
