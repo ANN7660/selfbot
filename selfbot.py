@@ -168,9 +168,9 @@ class DiscordSelfbot:
                 "status": "online",
                 "activities": [{
                     "type": 0,
-                    "name": "🌍 B2 ON TOP",
+                    "name": "🔥 B2 ON TOP 🔥",  # CHANGÉ pour forcer refresh
                     "application_id": CLIENT_ID,
-                    "details": "🔥 B2",
+                    "details": "💎 B2 💎",  # CHANGÉ aussi
                     "timestamps": {
                         "start": correct_timestamp
                     },
