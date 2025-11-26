@@ -11,10 +11,8 @@ from threading import Thread
 # Risque de BAN PERMANENT de ton compte
 
 # --- CONFIGURATION ---
-CLIENT_ID = '1442957097385066707'
-LARGE_IMAGE = 'logo_b2'           # Grande image
-SMALL_IMAGE = 'logo_petit_b2'     # Petite image
 GATEWAY_URL = "wss://gateway.discord.gg/?v=10&encoding=json"
+CUSTOM_STATUS = "🔥 B2 ON TOP | guns.lol/17h40"
 # --------------------
 
 # Flask pour Render
@@ -22,7 +20,7 @@ app = Flask('')
 
 @app.route('/')
 def home():
-    return "Discord Presence Active! ✨"
+    return "Discord Status Active! 🔥"
 
 def run_flask():
     import logging
@@ -49,21 +47,20 @@ class DiscordSelfbot:
         print("🔌 Connexion au Gateway Discord...", flush=True)
         
         try:
-            # AUGMENTER LA LIMITE à 10MB pour recevoir le READY event
             self.ws = await asyncio.wait_for(
                 websockets.connect(
                     GATEWAY_URL,
-                    max_size=10 * 1024 * 1024  # 10 MB au lieu de 1 MB
+                    max_size=10 * 1024 * 1024
                 ),
                 timeout=30.0
             )
-            print("✅ WebSocket connecté (limite 10MB)", flush=True)
+            print("✅ WebSocket connecté", flush=True)
             
             # Recevoir Hello
             hello = await asyncio.wait_for(self.ws.recv(), timeout=10.0)
             hello_data = json.loads(hello)
             
-            if hello_data['op'] == 10:  # Hello
+            if hello_data['op'] == 10:
                 self.heartbeat_interval = hello_data['d']['heartbeat_interval'] / 1000
                 print(f"💓 Heartbeat: {self.heartbeat_interval}s", flush=True)
                 
@@ -86,14 +83,14 @@ class DiscordSelfbot:
             await self.connect()
     
     async def identify(self):
-        """Authentification avec intents minimaux"""
+        """Authentification"""
         print("🔑 Authentification...", flush=True)
         
         identify_payload = {
             "op": 2,
             "d": {
                 "token": self.token,
-                "intents": 0,  # Aucun intent (on veut juste la présence)
+                "intents": 0,
                 "properties": {
                     "os": "windows",
                     "browser": "chrome",
@@ -111,34 +108,23 @@ class DiscordSelfbot:
             try:
                 await asyncio.sleep(self.heartbeat_interval)
                 await self.ws.send(json.dumps({"op": 1, "d": self.seq}))
-                # Heartbeat envoyé sans affichage
             except Exception as e:
                 print(f"❌ Heartbeat erreur: {e}", flush=True)
                 break
     
-    async def update_presence(self):
-        """Mettre à jour la Rich Presence avec 2 images"""
-        print("📡 Mise à jour Rich Presence...", flush=True)
+    async def update_status(self):
+        """Mettre à jour le statut custom"""
+        print("📡 Mise à jour du statut custom...", flush=True)
         
-        presence_payload = {
+        status_payload = {
             "op": 3,
             "d": {
                 "status": "online",
                 "activities": [{
-                    "type": 0,
-                    "name": "B2 ON TOP",
-                    "application_id": CLIENT_ID,
-                    "details": "guns.lol/17h40",
-                    "state": "",
-                    "timestamps": {"start": int(time.time() * 1000)},
-                    "assets": {
-                        "large_image": LARGE_IMAGE,
-                        "large_text": "B2 ON TOP",
-                        "small_image": SMALL_IMAGE,
-                        "small_text": "En ligne"
-                    },
-                    "buttons": ["guns lol b2"],
-                    "metadata": {"button_urls": ["https://guns.lol/17h40"]}
+                    "type": 4,  # Type 4 = Custom Status
+                    "state": CUSTOM_STATUS,
+                    "name": "Custom Status",
+                    "emoji": None
                 }],
                 "since": None,
                 "afk": False
@@ -146,8 +132,8 @@ class DiscordSelfbot:
         }
         
         try:
-            await self.ws.send(json.dumps(presence_payload))
-            print("✅ Rich Presence mise à jour avec 2 images !", flush=True)
+            await self.ws.send(json.dumps(status_payload))
+            print(f"✅ Statut mis à jour: {CUSTOM_STATUS}", flush=True)
         except Exception as e:
             print(f"❌ Erreur: {e}", flush=True)
     
@@ -166,15 +152,13 @@ class DiscordSelfbot:
                 self.session_id = data['d']['session_id']
                 print("=" * 60, flush=True)
                 print(f"✅ CONNECTÉ: {user['username']}", flush=True)
-                print(f"🎮 Joue à: B2 ON TOP", flush=True)
-                print(f"🖼️  Grande image: {LARGE_IMAGE}", flush=True)
-                print(f"🔹 Petite image: {SMALL_IMAGE}", flush=True)
+                print(f"🔥 Statut: {CUSTOM_STATUS}", flush=True)
                 print("=" * 60, flush=True)
                 
-                # Mettre à jour la présence
-                await self.update_presence()
+                # Mettre à jour le statut
+                await self.update_status()
                 
-                print("✨ Rich Presence active !", flush=True)
+                print("✨ Statut custom actif 24/7 !", flush=True)
                 print("=" * 60, flush=True)
             
             # Reconnect
@@ -187,13 +171,10 @@ async def main():
     TOKEN = os.getenv('DISCORD_TOKEN')
     
     print("=" * 60, flush=True)
-    print("🚀 Selfbot Discord Rich Presence", flush=True)
+    print("🚀 Selfbot Discord - Statut Custom 24/7", flush=True)
     print("⚠️  Viole les ToS - Risque de ban", flush=True)
     print("=" * 60, flush=True)
-    print(f"🎮 App: {CLIENT_ID}", flush=True)
-    print(f"🎯 Joue à: B2 ON TOP", flush=True)
-    print(f"🖼️  Grande image: {LARGE_IMAGE}", flush=True)
-    print(f"🔹 Petite image: {SMALL_IMAGE}", flush=True)
+    print(f"🔥 Statut: {CUSTOM_STATUS}", flush=True)
     print("=" * 60, flush=True)
     
     if not TOKEN:
@@ -213,4 +194,4 @@ if __name__ == "__main__":
     try:
         asyncio.run(main())
     except KeyboardInterrupt:
-        print("\n⏹️  Arrêt", flush=True)
+        print("\n⏹️  Arrêt", flush=True
