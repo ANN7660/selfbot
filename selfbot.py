@@ -5,32 +5,148 @@ import os
 import time
 import logging
 from threading import Thread
-from flask import Flask
+from flask import Flask, jsonify, request
+from flask_cors import CORS
+from datetime import datetime
+import aiohttp
 
 # ========== CONFIGURATION ==========
 CLIENT_ID = "1443718920568700939"
 IMAGE_NAME = "1443773833416020048"
 GATEWAY_URL = "wss://gateway.discord.gg/?v=10&encoding=json"
+DISCORD_API = "https://discord.com/api/v10"
 
-# Configuration des logs
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
-# ========== SERVEUR WEB POUR KEEP-ALIVE ==========
+# ========== STOCKAGE DES COMMANDES ==========
+commands = []
+stats = {
+    "total_commands": 0,
+    "active_commands": 0,
+    "total_executions": 0,
+    "start_time": time.time()
+}
+
+# ========== COMMANDES PAR DÉFAUT ==========
+def init_commands():
+    global commands
+    commands = [
+        # Commandes basiques
+        {"name": "?ping", "response": "🏓 Pong! Latence: {time}ms", "enabled": True, "count": 0},
+        {"name": "?help", "response": "📋 **Commandes B2:**\n`?ping` `?info` `?stats` `?purge` `?embed` `?avatar` `?snipe` `?spam` `?raid` `?nuke` `?discord` `?guns` `?b2`", "enabled": True, "count": 0},
+        {"name": "?info", "response": "ℹ️ **B2 Selfbot** | Version 2.0 | Uptime: {uptime}s | By Crown 👑", "enabled": True, "count": 0},
+        
+        # Utilitaires
+        {"name": "?avatar", "response": "🖼️ Avatar récupéré!", "enabled": True, "count": 0},
+        {"name": "?userinfo", "response": "👤 **Informations utilisateur**", "enabled": True, "count": 0},
+        {"name": "?serverinfo", "response": "🏠 **Informations serveur**", "enabled": True, "count": 0},
+        {"name": "?snipe", "response": "👻 Aucun message supprimé récemment", "enabled": True, "count": 0},
+        {"name": "?embed", "response": "📰 Embed créé avec succès!", "enabled": True, "count": 0},
+        
+        # Modération (fake)
+        {"name": "?purge", "response": "🗑️ Purge effectuée (simulation)", "enabled": True, "count": 0},
+        {"name": "?clear", "response": "🧹 Messages nettoyés! (simulation)", "enabled": True, "count": 0},
+        {"name": "?ban", "response": "🔨 Utilisateur banni (simulation)", "enabled": True, "count": 0},
+        {"name": "?kick", "response": "👢 Utilisateur kick (simulation)", "enabled": True, "count": 0},
+        
+        # Fun & Spam
+        {"name": "?spam", "response": "💥 Spam lancé! 🔥", "enabled": True, "count": 0},
+        {"name": "?raid", "response": "⚔️ RAID MODE ACTIVATED 💀", "enabled": True, "count": 0},
+        {"name": "?ascii", "response": "```\n▄▀█ █▀ █▀▀ █ █\n█▀█ ▄█ █▄▄ █ █\n```", "enabled": True, "count": 0},
+        {"name": "?ghost", "response": "👻 Mode fantôme activé...", "enabled": True, "count": 0},
+        {"name": "?fake", "response": "🎭 Message fake envoyé!", "enabled": True, "count": 0},
+        
+        # Toxic/Troll (FAKE - juste des messages)
+        {"name": "?nuke", "response": "💣 NUKE DEPLOYED 💥💥💥 (fake lol)", "enabled": True, "count": 0},
+        {"name": "?destroy", "response": "🔥 DESTRUCTION EN COURS... 💀 (simulation)", "enabled": True, "count": 0},
+        {"name": "?hack", "response": "💻 Hacking in progress... █████░░░░░ 50% (fake)", "enabled": True, "count": 0},
+        {"name": "?ddos", "response": "⚠️ DDoS simulation lancée (c'est du fake)", "enabled": True, "count": 0},
+        
+        # Liens & Socials
+        {"name": "?discord", "response": "👑 **Crown Discord:** https://discord.gg/bC8Jcjdr3H", "enabled": True, "count": 0},
+        {"name": "?guns", "response": "🔫 **Mon profil:** https://guns.lol/17h40", "enabled": True, "count": 0},
+        {"name": "?b2", "response": "🌍 **B2 Community** - La meilleure team française 🍇🔥", "enabled": True, "count": 0},
+        {"name": "?crown", "response": "👑 **CROWN GANG** - On est au top! 💯", "enabled": True, "count": 0},
+        
+        # Stats & Info
+        {"name": "?stats", "response": "📊 **Stats:** Exécutions: {count} | Uptime: {uptime}s", "enabled": True, "count": 0},
+        {"name": "?uptime", "response": "⏱️ Bot actif depuis: {uptime}s", "enabled": True, "count": 0},
+        {"name": "?version", "response": "🆔 **B2 Selfbot v2.0** - Coded by Crown 👑", "enabled": True, "count": 0},
+        
+        # Autres (désactivés par défaut)
+        {"name": "?nitro", "response": "💎 discord.gift/fakenitro (c'est fake mdr)", "enabled": False, "count": 0},
+        {"name": "?token", "response": "🔑 Token grabber: [REDACTED] (fake évidemment)", "enabled": False, "count": 0},
+        {"name": "?ip", "response": "🌐 IP Grabber activé (c'est du fake)", "enabled": False, "count": 0},
+    ]
+    update_stats()
+
+def update_stats():
+    global stats
+    stats["total_commands"] = len(commands)
+    stats["active_commands"] = sum(1 for cmd in commands if cmd["enabled"])
+
+# ========== API FLASK ==========
 app = Flask(__name__)
+CORS(app)
 
 @app.route('/')
 def home():
-    return "🟢 Bot Discord actif !"
+    return "🟢 Bot Discord actif avec Rich Presence + Commandes qui répondent!"
+
+@app.route('/api/commands', methods=['GET'])
+def get_commands():
+    return jsonify({
+        "success": True,
+        "commands": commands,
+        "stats": {
+            **stats,
+            "uptime": int(time.time() - stats["start_time"])
+        }
+    })
+
+@app.route('/api/commands', methods=['POST'])
+def add_command():
+    data = request.json
+    new_cmd = {
+        "name": data.get("name"),
+        "response": data.get("response"),
+        "enabled": True,
+        "count": 0
+    }
+    commands.append(new_cmd)
+    update_stats()
+    logger.info(f"➕ Commande ajoutée: {new_cmd['name']}")
+    return jsonify({"success": True, "command": new_cmd})
+
+@app.route('/api/commands/<int:index>', methods=['DELETE'])
+def delete_command(index):
+    if 0 <= index < len(commands):
+        deleted = commands.pop(index)
+        update_stats()
+        logger.info(f"🗑️ Commande supprimée: {deleted['name']}")
+        return jsonify({"success": True})
+    return jsonify({"success": False, "error": "Index invalide"}), 404
+
+@app.route('/api/commands/<int:index>/toggle', methods=['POST'])
+def toggle_command(index):
+    if 0 <= index < len(commands):
+        commands[index]["enabled"] = not commands[index]["enabled"]
+        update_stats()
+        status = "activée" if commands[index]["enabled"] else "désactivée"
+        logger.info(f"🔄 Commande {status}: {commands[index]['name']}")
+        return jsonify({"success": True, "enabled": commands[index]["enabled"]})
+    return jsonify({"success": False, "error": "Index invalide"}), 404
 
 def run_flask():
-    app.run(host='0.0.0.0', port=8080, debug=False, use_reloader=False)
+    port = int(os.getenv("PORT", 8080))
+    app.run(host='0.0.0.0', port=port, debug=False, use_reloader=False)
 
 def keep_alive():
-    """Lance un serveur web pour garder le Repl actif"""
+    """Lance un serveur web pour garder le bot actif"""
     t = Thread(target=run_flask, daemon=True)
     t.start()
-    logger.info("🌐 Serveur web démarré sur le port 8080")
+    logger.info(f"🌐 API démarrée sur le port 8080")
 
 # ========== SELFBOT DISCORD ==========
 class DiscordSelfbot:
@@ -43,6 +159,32 @@ class DiscordSelfbot:
         self.heartbeat_task = None
         self.should_reconnect = True
         self.reconnect_count = 0
+        self.http_session = None
+
+    async def send_message(self, channel_id, content):
+        """Envoie un message via l'API REST Discord"""
+        if not self.http_session:
+            self.http_session = aiohttp.ClientSession()
+        
+        url = f"{DISCORD_API}/channels/{channel_id}/messages"
+        headers = {
+            "Authorization": self.token,
+            "Content-Type": "application/json"
+        }
+        payload = {"content": content}
+        
+        try:
+            async with self.http_session.post(url, headers=headers, json=payload) as resp:
+                if resp.status == 200:
+                    logger.info(f"✅ Message envoyé dans le channel {channel_id}")
+                    return True
+                else:
+                    error_text = await resp.text()
+                    logger.error(f"❌ Erreur envoi message ({resp.status}): {error_text}")
+                    return False
+        except Exception as e:
+            logger.error(f"❌ Erreur lors de l'envoi: {e}")
+            return False
 
     async def connect(self):
         """Boucle de connexion principale avec logique de reconnexion"""
@@ -193,9 +335,12 @@ class DiscordSelfbot:
                         logger.info(f"🎉 Connecté en tant que: {username} (ID: {user.get('id')})")
                         self.session_id = d.get("session_id")
                         await self.update_presence()
-                        
+                    
                     elif event_type == "RESUMED":
                         logger.info("🔄 Session reprise")
+                    
+                    elif event_type == "MESSAGE_CREATE":
+                        await self.handle_message(d)
                 
                 # Heartbeat ACK
                 elif op == 11:
@@ -225,6 +370,34 @@ class DiscordSelfbot:
             except Exception as e:
                 logger.error(f"❌ Erreur: {e}")
 
+    async def handle_message(self, data):
+        """Gère les commandes et ENVOIE les réponses"""
+        content = data.get("content", "")
+        author = data.get("author", {})
+        author_id = author.get("id")
+        channel_id = data.get("channel_id")
+        
+        if not content or not author_id or not channel_id:
+            return
+        
+        # Cherche une commande correspondante
+        for cmd in commands:
+            if cmd["enabled"] and content.startswith(cmd["name"]):
+                cmd["count"] += 1
+                stats["total_executions"] += 1
+                
+                # Formate la réponse avec variables dynamiques
+                response = cmd["response"]
+                response = response.replace("{time}", str(int(time.time() * 1000) % 1000))
+                response = response.replace("{uptime}", str(int(time.time() - stats["start_time"])))
+                response = response.replace("{count}", str(stats["total_executions"]))
+                
+                logger.info(f"🎯 Commande détectée: {cmd['name']} (#{cmd['count']})")
+                
+                # 🔥 ENVOIE LA RÉPONSE DANS LE CHANNEL 🔥
+                await self.send_message(channel_id, response)
+                break
+
     async def resume(self):
         """Reprend une session existante"""
         if not self.session_id:
@@ -246,6 +419,8 @@ class DiscordSelfbot:
         self.should_reconnect = False
         if self.heartbeat_task:
             self.heartbeat_task.cancel()
+        if self.http_session:
+            await self.http_session.close()
         if self.ws:
             await self.ws.close()
         logger.info("👋 Connexion fermée")
@@ -257,12 +432,14 @@ async def main():
     
     if not token:
         logger.error("❌ Variable DISCORD_TOKEN manquante")
-        logger.info("💡 Ajoute ton token dans les Secrets (Replit)")
+        logger.info("💡 Ajoute ton token dans les variables d'environnement")
         return
 
-    logger.info("🚀 Démarrage du selfbot Discord avec Rich Presence...")
+    logger.info("🚀 Démarrage du selfbot Discord COMPLET...")
+    logger.info("✅ Rich Presence + Détection + ENVOI de réponses activé!")
     logger.warning("⚠️ Les selfbots violent les CGU de Discord - utilisez à vos risques")
     
+    init_commands()
     keep_alive()
     
     bot = DiscordSelfbot(token)
