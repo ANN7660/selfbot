@@ -4,107 +4,80 @@ import json
 import os
 import time
 import logging
-from flask import Flask
 from threading import Thread
+from flask import Flask
 
-# Configuration
-CLIENT_ID = '1442957097385066707'
-IMAGE_NAME = 'logo_b2'
+# ========== CONFIGURATION ==========
+CLIENT_ID = "1443718920568700939"
+IMAGE_NAME = "1443773833416020048"
 GATEWAY_URL = "wss://gateway.discord.gg/?v=10&encoding=json"
 
-# Configuration du logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s'
-)
+# Configuration des logs
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
-app = Flask('')
+# ========== SERVEUR WEB POUR KEEP-ALIVE ==========
+app = Flask(__name__)
 
 @app.route('/')
 def home():
-    return "Discord Presence Active! ✨"
-
-@app.route('/health')
-def health():
-    return {"status": "ok", "timestamp": time.time()}
+    return "🟢 Bot Discord actif !"
 
 def run_flask():
-    port = int(os.getenv('PORT', 10000))
-    app.run(host='0.0.0.0', port=port, debug=False)
+    app.run(host='0.0.0.0', port=8080, debug=False, use_reloader=False)
 
 def keep_alive():
-    t = Thread(target=run_flask)
-    t.daemon = True
+    """Lance un serveur web pour garder le Repl actif"""
+    t = Thread(target=run_flask, daemon=True)
     t.start()
+    logger.info("🌐 Serveur web démarré sur le port 8080")
 
+# ========== SELFBOT DISCORD ==========
 class DiscordSelfbot:
     def __init__(self, token):
-        self.token = token
+        self.token = token.strip()
         self.ws = None
         self.heartbeat_interval = None
-        self.seq = None
         self.session_id = None
+        self.sequence = None
         self.heartbeat_task = None
-        self.last_heartbeat_ack = True
-        self.reconnect_attempts = 0
-        self.max_reconnect_attempts = float('inf')
-        self.consecutive_failures = 0
-        
+        self.should_reconnect = True
+        self.reconnect_count = 0
+
     async def connect(self):
-        """Connexion au gateway Discord avec gestion d'erreurs améliorée"""
-        try:
-            logger.info("Connexion au gateway Discord...")
-            self.ws = await websockets.connect(
-                GATEWAY_URL, 
-                max_size=None,
-                ping_interval=None,
-                close_timeout=10
-            )
-            
-            hello = json.loads(await self.ws.recv())
-            
-            if hello['op'] == 10:
-                self.heartbeat_interval = hello['d']['heartbeat_interval'] / 1000
-                logger.info(f"Heartbeat interval: {self.heartbeat_interval}s")
+        """Boucle de connexion principale avec logique de reconnexion"""
+        max_retries = 10
+        
+        while self.should_reconnect and self.reconnect_count < max_retries:
+            try:
+                self.ws = await websockets.connect(GATEWAY_URL, max_size=None)
+                logger.info("✅ Connecté au Gateway Discord")
+                self.reconnect_count = 0
                 
-                if self.heartbeat_task:
-                    self.heartbeat_task.cancel()
-                self.heartbeat_task = asyncio.create_task(self.heartbeat())
-                
-                if self.session_id:
-                    await self.resume()
-                else:
-                    await self.identify()
-                
-                self.reconnect_attempts = 0
-                self.consecutive_failures = 0
+                await self.identify()
                 await self.listen()
                 
-        except websockets.exceptions.ConnectionClosed as e:
-            logger.warning(f"Connexion fermée: {e.code} - {e.reason}")
-            await self.handle_reconnect()
-        except Exception as e:
-            logger.error(f"Erreur de connexion: {e}")
-            await self.handle_reconnect()
-    
-    async def handle_reconnect(self):
-        """Gestion intelligente de la reconnexion avec backoff infini"""
-        self.reconnect_attempts += 1
-        self.consecutive_failures += 1
+            except websockets.exceptions.ConnectionClosed as e:
+                logger.warning(f"⚠️ Connexion fermée: {e}")
+                self.reconnect_count += 1
+                wait_time = min(5 * self.reconnect_count, 30)
+                logger.info(f"🔄 Reconnexion dans {wait_time}s... (tentative {self.reconnect_count}/{max_retries})")
+                await asyncio.sleep(wait_time)
+                
+            except Exception as e:
+                logger.error(f"❌ Erreur: {e}")
+                self.reconnect_count += 1
+                await asyncio.sleep(10)
+            
+            finally:
+                if self.heartbeat_task:
+                    self.heartbeat_task.cancel()
         
-        wait_time = min(5 * (2 ** min(self.consecutive_failures - 1, 5)), 300)
-        logger.info(f"⏳ Reconnexion dans {wait_time}s (tentative #{self.reconnect_attempts})")
-        await asyncio.sleep(wait_time)
-        
-        try:
-            await self.connect()
-        except Exception as e:
-            logger.error(f"Échec de reconnexion: {e}")
-            await self.handle_reconnect()
-    
+        if self.reconnect_count >= max_retries:
+            logger.error("❌ Nombre maximum de reconnexions atteint")
+
     async def identify(self):
-        """Envoi du payload d'identification"""
+        """Envoie le payload d'identification avec Rich Presence"""
         payload = {
             "op": 2,
             "d": {
@@ -115,141 +88,182 @@ class DiscordSelfbot:
                     "device": "pc"
                 },
                 "compress": False,
-                "large_threshold": 250
+                "large_threshold": 250,
+                "presence": {
+                    "status": "online",
+                    "activities": [
+                        {
+                            "type": 0,
+                            "application_id": CLIENT_ID,
+                            "name": "Participe à B2 🌍",
+                            "details": "🎄 restez branché 🎄",
+                            "state": "B2 ON TOP 🍇",
+                            "assets": {
+                                "large_image": IMAGE_NAME,
+                                "large_text": "B2 Community"
+                            },
+                            "buttons": ["👑 CROWN", "🔫 GUNS.LOL"]
+                        }
+                    ],
+                    "since": None,
+                    "afk": False
+                }
             }
         }
         await self.ws.send(json.dumps(payload))
-        logger.info("Payload d'identification envoyé")
-    
+        logger.info("📤 Identification avec Rich Presence envoyée")
+
+    async def update_presence(self):
+        """Met à jour la Rich Presence"""
+        payload = {
+            "op": 3,
+            "d": {
+                "status": "online",
+                "activities": [
+                    {
+                        "type": 0,
+                        "application_id": CLIENT_ID,
+                        "name": "Participe à B2 🌍",
+                        "details": "🎄 restez branché 🎄",
+                        "state": "B2 ON TOP 🍇",
+                        "assets": {
+                            "large_image": IMAGE_NAME,
+                            "large_text": "B2 Community"
+                        },
+                        "buttons": ["👑 CROWN", "🔫 GUNS.LOL"]
+                    }
+                ],
+                "since": None,
+                "afk": False
+            }
+        }
+        await self.ws.send(json.dumps(payload))
+        logger.info("✅ Rich Presence mise à jour")
+
+    async def send_heartbeat(self):
+        """Envoie des heartbeats réguliers"""
+        while True:
+            try:
+                await asyncio.sleep(self.heartbeat_interval / 1000)
+                heartbeat = {"op": 1, "d": self.sequence}
+                await self.ws.send(json.dumps(heartbeat))
+                logger.debug("💓 Heartbeat envoyé")
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                logger.error(f"❌ Erreur heartbeat: {e}")
+                break
+
+    async def listen(self):
+        """Écoute les messages du Gateway Discord"""
+        async for message in self.ws:
+            try:
+                data = json.loads(message)
+                op = data.get("op")
+                d = data.get("d")
+                
+                if data.get("s"):
+                    self.sequence = data["s"]
+                
+                # Hello - démarre le heartbeat
+                if op == 10:
+                    self.heartbeat_interval = d["heartbeat_interval"]
+                    logger.info(f"💓 Intervalle heartbeat: {self.heartbeat_interval}ms")
+                    self.heartbeat_task = asyncio.create_task(self.send_heartbeat())
+                
+                # Dispatch - événements Discord
+                elif op == 0:
+                    event_type = data.get("t")
+                    
+                    if event_type == "READY":
+                        user = d.get("user", {})
+                        username = user.get("username", "Inconnu")
+                        logger.info(f"🎉 Connecté en tant que: {username} (ID: {user.get('id')})")
+                        self.session_id = d.get("session_id")
+                        await self.update_presence()
+                        
+                    elif event_type == "RESUMED":
+                        logger.info("🔄 Session reprise")
+                
+                # Heartbeat ACK
+                elif op == 11:
+                    logger.debug("✅ Heartbeat ACK")
+                
+                # Demande de heartbeat immédiat
+                elif op == 1:
+                    await self.ws.send(json.dumps({"op": 1, "d": self.sequence}))
+                
+                # Session invalide
+                elif op == 9:
+                    can_resume = d if isinstance(d, bool) else False
+                    if can_resume:
+                        await self.resume()
+                    else:
+                        logger.warning("⚠️ Session invalide, reconnexion...")
+                        await asyncio.sleep(5)
+                        await self.identify()
+                
+                # Reconnect demandé
+                elif op == 7:
+                    logger.warning("🔄 Reconnexion demandée")
+                    raise websockets.exceptions.ConnectionClosed(1000, "Reconnect")
+                
+            except json.JSONDecodeError:
+                logger.error("❌ Erreur JSON")
+            except Exception as e:
+                logger.error(f"❌ Erreur: {e}")
+
     async def resume(self):
-        """Reprise de session après déconnexion"""
+        """Reprend une session existante"""
+        if not self.session_id:
+            return
+        
         payload = {
             "op": 6,
             "d": {
                 "token": self.token,
                 "session_id": self.session_id,
-                "seq": self.seq
+                "seq": self.sequence
             }
         }
         await self.ws.send(json.dumps(payload))
-        logger.info("Tentative de reprise de session")
-    
-    async def heartbeat(self):
-        """Envoi périodique du heartbeat avec détection d'ACK"""
-        try:
-            while True:
-                if not self.last_heartbeat_ack:
-                    logger.warning("Heartbeat ACK non reçu, reconnexion...")
-                    await self.ws.close()
-                    break
-                
-                self.last_heartbeat_ack = False
-                heartbeat_payload = {"op": 1, "d": self.seq}
-                await self.ws.send(json.dumps(heartbeat_payload))
-                logger.debug(f"Heartbeat envoyé (seq: {self.seq})")
-                
-                await asyncio.sleep(self.heartbeat_interval)
-        except asyncio.CancelledError:
-            logger.info("Tâche heartbeat annulée")
-        except Exception as e:
-            logger.error(f"Erreur dans heartbeat: {e}")
-    
-    async def update_presence(self):
-        """Mise à jour de la présence Discord"""
-        
-        # Timestamp fixe novembre 2024 (corrige le décalage Render)
-        correct_timestamp = 1732660000
-        
-        logger.info(f"🕐 Timer timestamp: {correct_timestamp}")
-        
-        payload = {
-            "op": 3,
-            "d": {
-                "status": "online",
-                "activities": [{
-                    "type": 0,
-                    "name": "🌍 B2 ON TOP",
-                    "details": "🔥 B2",
-                    "timestamps": {
-                        "start": correct_timestamp
-                    }
-                }],
-                "since": None,
-                "afk": False
-            }
-        }
-        
-        await self.ws.send(json.dumps(payload))
-        logger.info("Présence mise à jour avec succès")
-    
-    async def listen(self):
-        """Écoute des événements du gateway"""
-        try:
-            async for msg in self.ws:
-                data = json.loads(msg)
-                op = data.get('op')
-                t = data.get('t')
-                
-                if data.get('s'):
-                    self.seq = data['s']
-                
-                if op == 0:
-                    await self.handle_dispatch(t, data['d'])
-                elif op == 1:
-                    await self.ws.send(json.dumps({"op": 1, "d": self.seq}))
-                elif op == 7:
-                    logger.info("Reconnexion demandée par Discord")
-                    await self.ws.close()
-                    await self.connect()
-                elif op == 9:
-                    logger.warning("Session invalide")
-                    self.session_id = None
-                    await asyncio.sleep(5)
-                    await self.identify()
-                elif op == 11:
-                    self.last_heartbeat_ack = True
-                    logger.debug("Heartbeat ACK reçu")
-                    
-        except websockets.exceptions.ConnectionClosed:
-            logger.warning("Connexion fermée pendant l'écoute")
-        except Exception as e:
-            logger.error(f"Erreur dans listen: {e}")
-    
-    async def handle_dispatch(self, event_type, data):
-        """Gestion des événements dispatch"""
-        if event_type == "READY":
-            self.session_id = data['session_id']
-            user = data['user']
-            logger.info(f"✅ Connecté en tant que {user['username']}#{user['discriminator']}")
-            await self.update_presence()
-        elif event_type == "RESUMED":
-            logger.info("Session reprise avec succès")
+        logger.info("📤 Reprise de session")
+
+    async def close(self):
+        """Ferme proprement la connexion"""
+        self.should_reconnect = False
+        if self.heartbeat_task:
+            self.heartbeat_task.cancel()
+        if self.ws:
+            await self.ws.close()
+        logger.info("👋 Connexion fermée")
+
 
 async def main():
     """Fonction principale"""
     token = os.getenv("DISCORD_TOKEN")
     
     if not token:
-        logger.error("❌ DISCORD_TOKEN non défini dans les variables d'environnement")
+        logger.error("❌ Variable DISCORD_TOKEN manquante")
+        logger.info("💡 Ajoute ton token dans les Secrets (Replit)")
         return
+
+    logger.info("🚀 Démarrage du selfbot Discord avec Rich Presence...")
+    logger.warning("⚠️ Les selfbots violent les CGU de Discord - utilisez à vos risques")
     
-    logger.info("🚀 Démarrage du bot...")
+    keep_alive()
+    
     bot = DiscordSelfbot(token)
     
     try:
         await bot.connect()
     except KeyboardInterrupt:
-        logger.info("Arrêt du bot...")
-        if bot.ws:
-            await bot.ws.close()
-    except Exception as e:
-        logger.error(f"Erreur fatale: {e}")
+        logger.info("⏹️ Arrêt demandé")
+        await bot.close()
+
 
 if __name__ == "__main__":
-    keep_alive()
-    time.sleep(2)
-    
     try:
         asyncio.run(main())
     except KeyboardInterrupt:
-        logger.info("Programme arrêté par l'utilisateur")
+        logger.info("👋 Programme arrêté")
