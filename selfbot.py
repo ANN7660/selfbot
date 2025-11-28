@@ -79,6 +79,7 @@ class DiscordSelfbot:
         self.last_heartbeat_ack = True
         self.heartbeat_timeout = 60
         self.monitor = ConnectionMonitor()
+        self.use_simple_presence = False  # Basculer à True pour tester
 
     def log_close_code(self, code):
         """Explique les codes de fermeture Discord"""
@@ -125,6 +126,17 @@ class DiscordSelfbot:
                 await self.identify()
                 await self.listen()
                 
+            except OSError as e:
+                logger.error(f"❌ Erreur réseau (OSError): {e}")
+                logger.error(f"   Type: {type(e).__name__}")
+                if hasattr(e, 'errno'):
+                    logger.error(f"   Errno: {e.errno}")
+                self.monitor.on_disconnect()
+                
+            except asyncio.TimeoutError:
+                logger.error(f"❌ Timeout de connexion au Gateway")
+                self.monitor.on_disconnect()
+                
             except websockets.exceptions.ConnectionClosedOK as e:
                 logger.info(f"✅ Connexion fermée proprement")
                 logger.info(f"   Code: {e.code}")
@@ -158,6 +170,13 @@ class DiscordSelfbot:
             if self.should_reconnect and self.reconnect_count < max_retries:
                 self.reconnect_count += 1
                 delay = retry_delays[min(self.reconnect_count - 1, len(retry_delays) - 1)]
+                
+                # Délai supplémentaire si trop de déconnexions rapides
+                if self.monitor.disconnections > 20:
+                    extra_delay = min(self.monitor.disconnections * 2, 120)
+                    logger.warning(f"⚠️ Trop de déconnexions ({self.monitor.disconnections}), ajout de {extra_delay}s")
+                    delay += extra_delay
+                
                 logger.info(f"🔄 Reconnexion dans {delay}s... (tentative {self.reconnect_count}/{max_retries})")
                 await asyncio.sleep(delay)
         
@@ -166,6 +185,11 @@ class DiscordSelfbot:
 
     async def identify(self):
         """Envoie le payload d'identification avec Rich Presence"""
+        # Vérification du token
+        if not self.token or len(self.token) < 50:
+            logger.error("❌ Token invalide ou trop court")
+            raise ValueError("Token Discord invalide")
+        
         payload = {
             "op": 2,
             "d": {
@@ -177,35 +201,49 @@ class DiscordSelfbot:
                 },
                 "compress": False,
                 "large_threshold": 250,
-                "presence": {
-                    "status": "online",
-                    "activities": [
-                        {
-                            "type": 5,
-                            "application_id": CLIENT_ID,
-                            "name": "B2 🌍",
-                            "details": "🎄 restez branché 🎄",
-                            "state": "B2 ON TOP 🍇",
-                            "assets": {
-                                "large_image": IMAGE_NAME,
-                                "large_text": "HK ??"
-                            },
-                            "buttons": ["👑 CROWN", "🔫 GUNS.LOL"],
-                            "metadata": {
-                                "button_urls": [
-                                    "https://discord.gg/bC8Jcjdr3H",
-                                    "https://guns.lol/17h40"
-                                ]
-                            }
-                        }
-                    ],
-                    "since": None,
-                    "afk": False
-                }
+                "presence": self._get_presence_payload()
             }
         }
         await self.ws.send(json.dumps(payload))
         logger.info("📤 Identification avec Rich Presence envoyée")
+    
+    def _get_presence_payload(self):
+        """Retourne le payload de présence (simple ou complet)"""
+        if self.use_simple_presence:
+            # Version simplifiée pour tester
+            return {
+                "status": "online",
+                "activities": [],
+                "since": None,
+                "afk": False
+            }
+        
+        # Version complète avec Rich Presence
+        return {
+            "status": "online",
+            "activities": [
+                {
+                    "type": 5,
+                    "application_id": CLIENT_ID,
+                    "name": "B2 🌍",
+                    "details": "🎄 restez branché 🎄",
+                    "state": "B2 ON TOP 🍇",
+                    "assets": {
+                        "large_image": IMAGE_NAME,
+                        "large_text": "B2 Community"
+                    },
+                    "buttons": ["👑 CROWN", "🔫 GUNS.LOL"],
+                    "metadata": {
+                        "button_urls": [
+                            "https://discord.gg/bC8Jcjdr3H",
+                            "https://guns.lol/17h40"
+                        ]
+                    }
+                }
+            ],
+            "since": None,
+            "afk": False
+        }
 
     async def update_presence(self):
         """Met à jour la Rich Presence"""
