@@ -93,16 +93,22 @@ class DiscordSelfbot:
                     "status": "online",
                     "activities": [
                         {
-                            "type": 0,
+                            "type": 5,
                             "application_id": CLIENT_ID,
-                            "name": "Participe à B2 🌍",
+                            "name": "B2 🌍",
                             "details": "🎄 restez branché 🎄",
                             "state": "B2 ON TOP 🍇",
                             "assets": {
                                 "large_image": IMAGE_NAME,
                                 "large_text": "B2 Community"
                             },
-                            "buttons": ["👑 CROWN", "🔫 GUNS.LOL"]
+                            "buttons": ["👑 CROWN", "🔫 GUNS.LOL"],
+                            "metadata": {
+                                "button_urls": [
+                                    "https://discord.gg/bC8Jcjdr3H",
+                                    "https://guns.lol/17h40"
+                                ]
+                            }
                         }
                     ],
                     "since": None,
@@ -121,16 +127,22 @@ class DiscordSelfbot:
                 "status": "online",
                 "activities": [
                     {
-                        "type": 0,
+                        "type": 5,
                         "application_id": CLIENT_ID,
-                        "name": "Participe à B2 🌍",
+                        "name": "B2 🌍",
                         "details": "🎄 restez branché 🎄",
                         "state": "B2 ON TOP 🍇",
                         "assets": {
                             "large_image": IMAGE_NAME,
                             "large_text": "B2 Community"
                         },
-                        "buttons": ["👑 CROWN", "🔫 GUNS.LOL"]
+                        "buttons": ["👑 CROWN", "🔫 GUNS.LOL"],
+                        "metadata": {
+                            "button_urls": [
+                                "https://discord.gg/bC8Jcjdr3H",
+                                "https://guns.lol/17h40"
+                            ]
+                        }
                     }
                 ],
                 "since": None,
