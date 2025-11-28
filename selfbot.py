@@ -538,12 +538,13 @@ class DiscordSelfbot:
                 logger.debug("💓 Heartbeat envoyé")
             except asyncio.CancelledError:
                 break
-            except Exception as e:
+           except Exception as e:
                 logger.error(f"❌ Erreur heartbeat: {e}")
                 break
-            async def listen(self):
+        
+    async def listen(self): # Ligne 544
         """Écoute les événements Discord"""
-        async for message in self.ws:
+        async for message in self.ws: # <-- Le code DOIT commencer ici, avec une indentation (4 espaces ou une tabulation)
             try:
                 data = json.loads(message)
                 op = data.get("op")
@@ -557,6 +558,7 @@ class DiscordSelfbot:
                     self.heartbeat_interval = d["heartbeat_interval"]
                     logger.info(f"💓 Heartbeat: {self.heartbeat_interval}ms")
                     self.heartbeat_task = asyncio.create_task(self.send_heartbeat())
+                # ... (le reste de la fonction)
                 
                 # Dispatch
                 elif op == 0:
