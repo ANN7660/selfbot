@@ -14,10 +14,10 @@ GATEWAY_URL = "wss://gateway.discord.gg/?v=10&encoding=json"
 
 # Configuration WebSocket
 WEBSOCKET_CONFIG = {
-    "ping_interval": 20,      # Ping toutes les 20s
-    "ping_timeout": 10,       # Timeout de 10s pour le pong
-    "close_timeout": 10,      # Timeout de 10s pour la fermeture
-    "max_size": 2**20,        # 1MB max par message
+    "ping_interval": 20,
+    "ping_timeout": 10,
+    "close_timeout": 10,
+    "max_size": 2**20,
 }
 
 # Configuration des logs
@@ -79,7 +79,7 @@ class DiscordSelfbot:
         self.last_heartbeat_ack = True
         self.heartbeat_timeout = 60
         self.monitor = ConnectionMonitor()
-        self.use_simple_presence = True  # TEST: Désactiver Rich Presence
+        self.use_rich_presence = False  # ⚠️ CHANGÉ: Désactiver la Rich Presence
 
     def log_close_code(self, code):
         """Explique les codes de fermeture Discord"""
@@ -184,7 +184,7 @@ class DiscordSelfbot:
             logger.critical("💀 Nombre maximum de reconnexions atteint")
 
     async def identify(self):
-        """Envoie le payload d'identification avec Rich Presence"""
+        """Envoie le payload d'identification"""
         # Vérification du token
         if not self.token or len(self.token) < 50:
             logger.error("❌ Token invalide ou trop court")
@@ -195,30 +195,26 @@ class DiscordSelfbot:
             "d": {
                 "token": self.token,
                 "properties": {
-                    "os": "windows",
-                    "browser": "chrome",
-                    "device": "pc"
+                    "os": "Windows",
+                    "browser": "Discord Client",
+                    "device": "desktop"
                 },
                 "compress": False,
-                "large_threshold": 250,
-                "presence": self._get_presence_payload()
+                "large_threshold": 250
             }
         }
+        
+        # Ajouter la présence seulement si activée
+        if self.use_rich_presence:
+            payload["d"]["presence"] = self._get_presence_payload()
+            logger.info("📤 Identification avec Rich Presence envoyée")
+        else:
+            logger.info("📤 Identification simple envoyée (sans Rich Presence)")
+        
         await self.ws.send(json.dumps(payload))
-        logger.info("📤 Identification avec Rich Presence envoyée")
     
     def _get_presence_payload(self):
-        """Retourne le payload de présence (simple ou complet)"""
-        if self.use_simple_presence:
-            # Version simplifiée pour tester
-            return {
-                "status": "online",
-                "activities": [],
-                "since": None,
-                "afk": False
-            }
-        
-        # Version complète avec Rich Presence
+        """Retourne le payload de Rich Presence complète"""
         return {
             "status": "online",
             "activities": [
@@ -246,34 +242,14 @@ class DiscordSelfbot:
         }
 
     async def update_presence(self):
-        """Met à jour la Rich Presence"""
+        """Met à jour la Rich Presence (seulement si activée)"""
+        if not self.use_rich_presence:
+            logger.debug("🚫 Rich Presence désactivée, mise à jour ignorée")
+            return
+            
         payload = {
             "op": 3,
-            "d": {
-                "status": "online",
-                "activities": [
-                    {
-                        "type": 5,
-                        "application_id": CLIENT_ID,
-                        "name": "B2 🌍",
-                        "details": "🎄 restez branché 🎄",
-                        "state": "B2 ON TOP 🍇",
-                        "assets": {
-                            "large_image": IMAGE_NAME,
-                            "large_text": "B2 Community"
-                        },
-                        "buttons": ["👑 CROWN", "🔫 GUNS.LOL"],
-                        "metadata": {
-                            "button_urls": [
-                                "https://discord.gg/bC8Jcjdr3H",
-                                "https://guns.lol/17h40"
-                            ]
-                        }
-                    }
-                ],
-                "since": None,
-                "afk": False
-            }
+            "d": self._get_presence_payload()
         }
         await self.ws.send(json.dumps(payload))
         logger.info("✅ Rich Presence mise à jour")
@@ -338,7 +314,12 @@ class DiscordSelfbot:
                         username = user.get("username", "Inconnu")
                         logger.info(f"🎉 Connecté en tant que: {username} (ID: {user.get('id')})")
                         self.session_id = d.get("session_id")
-                        await self.update_presence()
+                        
+                        # ⚠️ CHANGEMENT ICI: Ne plus appeler update_presence() automatiquement
+                        if self.use_rich_presence:
+                            await self.update_presence()
+                        else:
+                            logger.info("✅ Bot en ligne (sans Rich Presence)")
                         
                     elif event_type == "RESUMED":
                         logger.info("🔄 Session reprise")
@@ -407,7 +388,8 @@ async def main():
         logger.info("💡 Ajoute ton token dans les Secrets (Replit)")
         return
 
-    logger.info("🚀 Démarrage du selfbot Discord avec Rich Presence...")
+    logger.info("🚀 Démarrage du selfbot Discord...")
+    logger.info("ℹ️  Rich Presence: DÉSACTIVÉE (mode test)")
     logger.warning("⚠️ Les selfbots violent les CGU de Discord - utilisez à vos risques")
     
     keep_alive()
