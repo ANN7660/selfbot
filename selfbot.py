@@ -4,6 +4,7 @@ import json
 import os
 import time
 import logging
+import random
 from threading import Thread
 from flask import Flask
 
@@ -190,17 +191,33 @@ class DiscordSelfbot:
             logger.error("❌ Token invalide ou trop court")
             raise ValueError("Token Discord invalide")
         
+        # Petit délai aléatoire (plus humain)
+        await asyncio.sleep(random.uniform(0.5, 2.0))
+        
         payload = {
             "op": 2,
             "d": {
                 "token": self.token,
                 "properties": {
-                    "os": "Windows",
-                    "browser": "Discord Client",
-                    "device": "desktop"
+                    "$os": "Windows 10",
+                    "$browser": "Chrome",
+                    "$device": "Chrome",
+                    "browser_user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+                    "browser_version": "131.0.0.0",
+                    "os_version": "10",
+                    "referrer": "",
+                    "referring_domain": "",
+                    "referrer_current": "",
+                    "referring_domain_current": "",
+                    "release_channel": "stable",
+                    "client_build_number": 331432,
+                    "client_event_source": None
                 },
                 "compress": False,
-                "large_threshold": 250
+                "capabilities": 16381,
+                "client_state": {
+                    "guild_versions": {}
+                }
             }
         }
         
@@ -209,7 +226,7 @@ class DiscordSelfbot:
             payload["d"]["presence"] = self._get_presence_payload()
             logger.info("📤 Identification avec Rich Presence envoyée")
         else:
-            logger.info("📤 Identification simple envoyée (sans Rich Presence)")
+            logger.info("📤 Identification (mode furtif)")
         
         await self.ws.send(json.dumps(payload))
     
@@ -255,10 +272,12 @@ class DiscordSelfbot:
         logger.info("✅ Rich Presence mise à jour")
 
     async def send_heartbeat(self):
-        """Envoie des heartbeats réguliers avec timeout"""
+        """Envoie des heartbeats réguliers avec jitter"""
         while True:
             try:
-                await asyncio.sleep(self.heartbeat_interval / 1000)
+                # Jitter aléatoire pour paraître plus humain
+                jitter = random.uniform(-2, 2)
+                await asyncio.sleep((self.heartbeat_interval / 1000) + jitter)
                 
                 # Vérifier si le dernier heartbeat a reçu un ACK
                 if not self.last_heartbeat_ack:
