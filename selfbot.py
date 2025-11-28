@@ -79,7 +79,7 @@ class DiscordSelfbot:
         self.last_heartbeat_ack = True
         self.heartbeat_timeout = 60
         self.monitor = ConnectionMonitor()
-        self.use_simple_presence = False  # Basculer à True pour tester
+        self.use_simple_presence = True  # TEST: Désactiver Rich Presence
 
     def log_close_code(self, code):
         """Explique les codes de fermeture Discord"""
