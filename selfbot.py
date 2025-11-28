@@ -12,6 +12,14 @@ CLIENT_ID = "1443718920568700939"
 IMAGE_NAME = "1443773833416020048"
 GATEWAY_URL = "wss://gateway.discord.gg/?v=10&encoding=json"
 
+# Configuration WebSocket
+WEBSOCKET_CONFIG = {
+    "ping_interval": 20,      # Ping toutes les 20s
+    "ping_timeout": 10,       # Timeout de 10s pour le pong
+    "close_timeout": 10,      # Timeout de 10s pour la fermeture
+    "max_size": 2**20,        # 1MB max par message
+}
+
 # Configuration des logs
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
@@ -32,6 +40,31 @@ def keep_alive():
     t.start()
     logger.info("🌐 Serveur web démarré sur le port 8080")
 
+# ========== MONITEUR DE CONNEXION ==========
+class ConnectionMonitor:
+    def __init__(self):
+        self.connected_at = None
+        self.disconnections = 0
+        self.last_disconnect = None
+        self.total_uptime = 0
+        
+    def on_connect(self):
+        self.connected_at = time.time()
+        if self.disconnections > 0:
+            logger.info(f"📊 Statistiques: {self.disconnections} déconnexions totales")
+        
+    def on_disconnect(self):
+        if self.connected_at:
+            uptime = time.time() - self.connected_at
+            self.total_uptime += uptime
+            self.disconnections += 1
+            self.last_disconnect = time.time()
+            
+            logger.info(f"📊 Session terminée après {uptime:.1f}s")
+            if self.disconnections > 1:
+                logger.info(f"📊 Uptime total: {self.total_uptime:.1f}s")
+                logger.info(f"📊 Moyenne par session: {self.total_uptime / self.disconnections:.1f}s")
+
 # ========== SELFBOT DISCORD ==========
 class DiscordSelfbot:
     def __init__(self, token):
@@ -43,38 +76,93 @@ class DiscordSelfbot:
         self.heartbeat_task = None
         self.should_reconnect = True
         self.reconnect_count = 0
+        self.last_heartbeat_ack = True
+        self.heartbeat_timeout = 60
+        self.monitor = ConnectionMonitor()
+
+    def log_close_code(self, code):
+        """Explique les codes de fermeture Discord"""
+        close_codes = {
+            1000: "Normal closure",
+            1001: "Going away",
+            1006: "Abnormal closure (no close frame)",
+            4000: "Unknown error",
+            4001: "Unknown opcode",
+            4002: "Decode error",
+            4003: "Not authenticated",
+            4004: "Authentication failed (invalid token)",
+            4005: "Already authenticated",
+            4007: "Invalid seq",
+            4008: "Rate limited",
+            4009: "Session timed out",
+            4010: "Invalid shard",
+            4011: "Sharding required",
+            4012: "Invalid API version",
+            4013: "Invalid intent(s)",
+            4014: "Disallowed intent(s)"
+        }
+        
+        if code in close_codes:
+            logger.error(f"   📋 Signification: {close_codes[code]}")
+        else:
+            logger.error(f"   📋 Code inconnu: {code}")
 
     async def connect(self):
         """Boucle de connexion principale avec logique de reconnexion"""
         max_retries = 10
+        retry_delays = [5, 10, 15, 30, 60, 120, 300, 600, 900, 1800]
         
         while self.should_reconnect and self.reconnect_count < max_retries:
             try:
-                self.ws = await websockets.connect(GATEWAY_URL, max_size=None)
+                self.ws = await websockets.connect(
+                    GATEWAY_URL,
+                    **WEBSOCKET_CONFIG
+                )
                 logger.info("✅ Connecté au Gateway Discord")
+                self.monitor.on_connect()
                 self.reconnect_count = 0
                 
                 await self.identify()
                 await self.listen()
                 
+            except websockets.exceptions.ConnectionClosedOK as e:
+                logger.info(f"✅ Connexion fermée proprement")
+                logger.info(f"   Code: {e.code}")
+                logger.info(f"   Raison: {e.reason or 'Non spécifiée'}")
+                self.monitor.on_disconnect()
+                
+            except websockets.exceptions.ConnectionClosedError as e:
+                logger.error(f"❌ Connexion fermée avec erreur")
+                logger.error(f"   Code: {e.code}")
+                logger.error(f"   Raison: {e.reason or 'Non spécifiée'}")
+                self.log_close_code(e.code)
+                self.monitor.on_disconnect()
+                
             except websockets.exceptions.ConnectionClosed as e:
-                logger.warning(f"⚠️ Connexion fermée: {e}")
-                self.reconnect_count += 1
-                wait_time = min(5 * self.reconnect_count, 30)
-                logger.info(f"🔄 Reconnexion dans {wait_time}s... (tentative {self.reconnect_count}/{max_retries})")
-                await asyncio.sleep(wait_time)
+                logger.warning(f"⚠️ Connexion fermée: {e.reason or 'no close frame received or sent'}")
+                if hasattr(e, 'code'):
+                    logger.warning(f"   Code: {e.code}")
+                    self.log_close_code(e.code)
+                logger.warning(f"   Raison: {e.reason or 'Non spécifiée'}")
+                self.monitor.on_disconnect()
                 
             except Exception as e:
-                logger.error(f"❌ Erreur: {e}")
-                self.reconnect_count += 1
-                await asyncio.sleep(10)
+                logger.error(f"❌ Erreur inattendue: {type(e).__name__}: {e}")
+                self.monitor.on_disconnect()
             
             finally:
                 if self.heartbeat_task:
                     self.heartbeat_task.cancel()
+            
+            # Reconnexion avec backoff exponentiel
+            if self.should_reconnect and self.reconnect_count < max_retries:
+                self.reconnect_count += 1
+                delay = retry_delays[min(self.reconnect_count - 1, len(retry_delays) - 1)]
+                logger.info(f"🔄 Reconnexion dans {delay}s... (tentative {self.reconnect_count}/{max_retries})")
+                await asyncio.sleep(delay)
         
         if self.reconnect_count >= max_retries:
-            logger.error("❌ Nombre maximum de reconnexions atteint")
+            logger.critical("💀 Nombre maximum de reconnexions atteint")
 
     async def identify(self):
         """Envoie le payload d'identification avec Rich Presence"""
@@ -100,7 +188,7 @@ class DiscordSelfbot:
                             "state": "B2 ON TOP 🍇",
                             "assets": {
                                 "large_image": IMAGE_NAME,
-                                "large_text": "B2 Community"
+                                "large_text": "HK ??"
                             },
                             "buttons": ["👑 CROWN", "🔫 GUNS.LOL"],
                             "metadata": {
@@ -153,13 +241,33 @@ class DiscordSelfbot:
         logger.info("✅ Rich Presence mise à jour")
 
     async def send_heartbeat(self):
-        """Envoie des heartbeats réguliers"""
+        """Envoie des heartbeats réguliers avec timeout"""
         while True:
             try:
                 await asyncio.sleep(self.heartbeat_interval / 1000)
+                
+                # Vérifier si le dernier heartbeat a reçu un ACK
+                if not self.last_heartbeat_ack:
+                    logger.warning("⚠️ Aucun ACK reçu pour le dernier heartbeat")
+                    await self.ws.close(code=1000, reason="Heartbeat timeout")
+                    break
+                
+                self.last_heartbeat_ack = False
+                
+                # Envoyer le heartbeat avec timeout
                 heartbeat = {"op": 1, "d": self.sequence}
-                await self.ws.send(json.dumps(heartbeat))
-                logger.debug("💓 Heartbeat envoyé")
+                
+                await asyncio.wait_for(
+                    self.ws.send(json.dumps(heartbeat)),
+                    timeout=self.heartbeat_timeout
+                )
+                
+                logger.debug(f"💓 Heartbeat envoyé (seq: {self.sequence})")
+                
+            except asyncio.TimeoutError:
+                logger.error("❌ Timeout lors de l'envoi du heartbeat")
+                await self.ws.close(code=1000, reason="Heartbeat send timeout")
+                break
             except asyncio.CancelledError:
                 break
             except Exception as e:
@@ -199,7 +307,8 @@ class DiscordSelfbot:
                 
                 # Heartbeat ACK
                 elif op == 11:
-                    logger.debug("✅ Heartbeat ACK")
+                    self.last_heartbeat_ack = True
+                    logger.debug("✅ Heartbeat ACK reçu")
                 
                 # Demande de heartbeat immédiat
                 elif op == 1:
@@ -217,13 +326,13 @@ class DiscordSelfbot:
                 
                 # Reconnect demandé
                 elif op == 7:
-                    logger.warning("🔄 Reconnexion demandée")
-                    raise websockets.exceptions.ConnectionClosed(1000, "Reconnect")
+                    logger.warning("🔄 Reconnexion demandée par Discord")
+                    raise websockets.exceptions.ConnectionClosed(1000, "Reconnect requested")
                 
             except json.JSONDecodeError:
-                logger.error("❌ Erreur JSON")
+                logger.error("❌ Erreur décodage JSON")
             except Exception as e:
-                logger.error(f"❌ Erreur: {e}")
+                logger.error(f"❌ Erreur lors du traitement: {e}")
 
     async def resume(self):
         """Reprend une session existante"""
