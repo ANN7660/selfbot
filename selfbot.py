@@ -1,333 +1,428 @@
-import discord
-from discord.ext import commands
+import asyncio
+import websockets
+import json
 import os
-import aiohttp
-import random
+import time
 import logging
-import sys
 from threading import Thread
 from flask import Flask
 
-# ========================================
-# LOGGING
-# ========================================
-logging.basicConfig(
-    level=logging.INFO,
-    format='[%(asctime)s] [%(levelname)s] %(message)s',
-    datefmt='%Y-%m-%d %H:%M:%S',
-    handlers=[logging.StreamHandler(sys.stdout)]
-)
+# ========== CONFIGURATION ==========
+CLIENT_ID = "1443718920568700939"
+IMAGE_NAME = "1443773833416020048"
+GATEWAY_URL = "wss://gateway.discord.gg/?v=10&encoding=json"
+
+# Configuration WebSocket
+WEBSOCKET_CONFIG = {
+    "ping_interval": 20,      # Ping toutes les 20s
+    "ping_timeout": 10,       # Timeout de 10s pour le pong
+    "close_timeout": 10,      # Timeout de 10s pour la fermeture
+    "max_size": 2**20,        # 1MB max par message
+}
+
+# Configuration des logs
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
-# ========================================
-# FLASK (OBLIGATOIRE POUR WEB SERVICE)
-# ========================================
-app = Flask('')
+# ========== SERVEUR WEB POUR KEEP-ALIVE ==========
+app = Flask(__name__)
 
 @app.route('/')
 def home():
-    return "✅ Bot Discord actif!"
-
-@app.route('/health')
-def health():
-    return {"status": "alive", "bot": str(bot.user) if bot.user else "Starting..."}
+    return "🟢 Bot Discord actif !"
 
 def run_flask():
-    """Lance Flask sur le port requis par Render"""
-    port = int(os.environ.get('PORT', 10000))
-    logger.info(f"🌐 Flask sur port {port}...")
-    app.run(host='0.0.0.0', port=port, use_reloader=False)
+    app.run(host='0.0.0.0', port=8080, debug=False, use_reloader=False)
 
-# ========================================
-# BOT DISCORD
-# ========================================
-intents = discord.Intents.default()
-intents.message_content = True
-bot = commands.Bot(command_prefix='!', intents=intents)
+def keep_alive():
+    """Lance un serveur web pour garder le Repl actif"""
+    t = Thread(target=run_flask, daemon=True)
+    t.start()
+    logger.info("🌐 Serveur web démarré sur le port 8080")
 
-DISCORD_TOKEN = os.getenv('DISCORD_TOKEN')
-
-# ========================================
-# CATÉGORIES
-# ========================================
-CATEGORIES = {
-    "😎 Anime": {
-        "api": "waifu.pics",
-        "tags": ["waifu", "neko", "shinobu", "megumin", "bully", "cuddle", "cry", "hug", "awoo", "kiss", "lick", "pat", "smug", "bonk", "yeet", "blush", "smile", "wave", "highfive", "handhold", "nom", "bite", "glomp", "slap", "kill", "kick", "happy", "wink", "poke", "dance", "cringe"]
-    },
-    "😺 Nekos": {
-        "api": "nekos.best",
-        "tags": ["neko", "kitsune", "waifu", "husbando"]
-    },
-    "✨ Waifu": {
-        "api": "waifu.im",
-        "tags": ["waifu", "maid", "marin-kitagawa", "raiden-shogun", "selfies", "uniform"]
-    }
-}
-
-# ========================================
-# APIS
-# ========================================
-async def fetch_waifu_pics(tag: str) -> str:
-    url = f"https://api.waifu.pics/sfw/{tag}"
-    try:
-        async with aiohttp.ClientSession() as session:
-            async with session.get(url) as response:
-                if response.status == 200:
-                    data = await response.json()
-                    return data.get('url')
-    except Exception as e:
-        logger.error(f"❌ Waifu.pics: {e}")
-    return None
-
-async def fetch_nekos_best(tag: str) -> str:
-    url = f"https://nekos.best/api/v2/{tag}"
-    try:
-        async with aiohttp.ClientSession() as session:
-            async with session.get(url) as response:
-                if response.status == 200:
-                    data = await response.json()
-                    return data['results'][0]['url']
-    except Exception as e:
-        logger.error(f"❌ Nekos.best: {e}")
-    return None
-
-async def fetch_waifu_im(tag: str) -> str:
-    url = "https://api.waifu.im/search"
-    params = {"included_tags": tag, "is_nsfw": "false"}
-    try:
-        async with aiohttp.ClientSession() as session:
-            async with session.get(url, params=params) as response:
-                if response.status == 200:
-                    data = await response.json()
-                    if data.get('images'):
-                        return data['images'][0]['url']
-    except Exception as e:
-        logger.error(f"❌ Waifu.im: {e}")
-    return None
-
-async def get_image(category: str, tag: str) -> str:
-    cat_data = CATEGORIES.get(category)
-    if not cat_data:
-        return None
-    
-    api_type = cat_data["api"]
-    
-    if api_type == "waifu.pics":
-        return await fetch_waifu_pics(tag)
-    elif api_type == "nekos.best":
-        return await fetch_nekos_best(tag)
-    elif api_type == "waifu.im":
-        return await fetch_waifu_im(tag)
-    
-    return None
-
-# ========================================
-# EMBEDS
-# ========================================
-def create_embed(title: str, image_url: str, category: str) -> discord.Embed:
-    embed = discord.Embed(
-        title=f"📸 {title}",
-        description=f"Catégorie: {category}",
-        color=discord.Color.random()
-    )
-    embed.set_image(url=image_url)
-    embed.set_footer(text="🎨 API Anime")
-    return embed
-
-# ========================================
-# VUES DISCORD
-# ========================================
-class CategorySelect(discord.ui.Select):
+# ========== MONITEUR DE CONNEXION ==========
+class ConnectionMonitor:
     def __init__(self):
-        options = [
-            discord.SelectOption(
-                label=cat,
-                emoji=cat.split()[0],
-                description=f"{len(CATEGORIES[cat]['tags'])} styles"
-            )
-            for cat in CATEGORIES.keys()
-        ]
-        super().__init__(placeholder="🎨 Choisis une catégorie...", options=options)
-    
-    async def callback(self, interaction: discord.Interaction):
-        selected = self.values[0]
-        tags = CATEGORIES[selected]['tags']
+        self.connected_at = None
+        self.disconnections = 0
+        self.last_disconnect = None
+        self.total_uptime = 0
         
-        view = TagView(selected, tags)
-        embed = discord.Embed(
-            title=f"{selected}",
-            description=f"**{len(tags)}** styles disponibles !",
-            color=discord.Color.purple()
-        )
-        await interaction.response.edit_message(embed=embed, view=view)
+    def on_connect(self):
+        self.connected_at = time.time()
+        if self.disconnections > 0:
+            logger.info(f"📊 Statistiques: {self.disconnections} déconnexions totales")
+        
+    def on_disconnect(self):
+        if self.connected_at:
+            uptime = time.time() - self.connected_at
+            self.total_uptime += uptime
+            self.disconnections += 1
+            self.last_disconnect = time.time()
+            
+            logger.info(f"📊 Session terminée après {uptime:.1f}s")
+            if self.disconnections > 1:
+                logger.info(f"📊 Uptime total: {self.total_uptime:.1f}s")
+                logger.info(f"📊 Moyenne par session: {self.total_uptime / self.disconnections:.1f}s")
 
-class CategoryView(discord.ui.View):
-    def __init__(self):
-        super().__init__(timeout=180)
-        self.add_item(CategorySelect())
-    
-    @discord.ui.button(label="❌ Annuler", style=discord.ButtonStyle.danger)
-    async def cancel(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await interaction.response.edit_message(content="✅ Annulé!", embed=None, view=None)
+# ========== SELFBOT DISCORD ==========
+class DiscordSelfbot:
+    def __init__(self, token):
+        self.token = token.strip()
+        self.ws = None
+        self.heartbeat_interval = None
+        self.session_id = None
+        self.sequence = None
+        self.heartbeat_task = None
+        self.should_reconnect = True
+        self.reconnect_count = 0
+        self.last_heartbeat_ack = True
+        self.heartbeat_timeout = 60
+        self.monitor = ConnectionMonitor()
+        self.use_simple_presence = False  # Basculer à True pour tester
 
-class TagSelect(discord.ui.Select):
-    def __init__(self, category: str, tags: list):
-        self.category = category
-        options = [
-            discord.SelectOption(label=tag.title(), value=tag)
-            for tag in tags[:25]
-        ]
-        super().__init__(placeholder="✨ Choisis un style...", options=options)
-    
-    async def callback(self, interaction: discord.Interaction):
-        tag = self.values[0]
-        logger.info(f"🎯 {tag} par {interaction.user}")
+    def log_close_code(self, code):
+        """Explique les codes de fermeture Discord"""
+        close_codes = {
+            1000: "Normal closure",
+            1001: "Going away",
+            1006: "Abnormal closure (no close frame)",
+            4000: "Unknown error",
+            4001: "Unknown opcode",
+            4002: "Decode error",
+            4003: "Not authenticated",
+            4004: "Authentication failed (invalid token)",
+            4005: "Already authenticated",
+            4007: "Invalid seq",
+            4008: "Rate limited",
+            4009: "Session timed out",
+            4010: "Invalid shard",
+            4011: "Sharding required",
+            4012: "Invalid API version",
+            4013: "Invalid intent(s)",
+            4014: "Disallowed intent(s)"
+        }
         
-        await interaction.response.edit_message(
-            content=f"📌 Chargement...",
-            embed=None,
-            view=None
-        )
-        
-        image_url = await get_image(self.category, tag)
-        
-        if image_url:
-            embed = create_embed(tag.title(), image_url, self.category)
-            view = RefreshView(self.category, tag)
-            await interaction.edit_original_response(content=None, embed=embed, view=view)
+        if code in close_codes:
+            logger.error(f"   📋 Signification: {close_codes[code]}")
         else:
-            await interaction.edit_original_response(content=f"❌ Erreur")
+            logger.error(f"   📋 Code inconnu: {code}")
 
-class TagView(discord.ui.View):
-    def __init__(self, category: str, tags: list):
-        super().__init__(timeout=180)
-        self.category = category
-        self.tags = tags
-        self.add_item(TagSelect(category, tags))
+    async def connect(self):
+        """Boucle de connexion principale avec logique de reconnexion"""
+        max_retries = 10
+        retry_delays = [5, 10, 15, 30, 60, 120, 300, 600, 900, 1800]
+        
+        while self.should_reconnect and self.reconnect_count < max_retries:
+            try:
+                self.ws = await websockets.connect(
+                    GATEWAY_URL,
+                    **WEBSOCKET_CONFIG
+                )
+                logger.info("✅ Connecté au Gateway Discord")
+                self.monitor.on_connect()
+                self.reconnect_count = 0
+                
+                await self.identify()
+                await self.listen()
+                
+            except OSError as e:
+                logger.error(f"❌ Erreur réseau (OSError): {e}")
+                logger.error(f"   Type: {type(e).__name__}")
+                if hasattr(e, 'errno'):
+                    logger.error(f"   Errno: {e.errno}")
+                self.monitor.on_disconnect()
+                
+            except asyncio.TimeoutError:
+                logger.error(f"❌ Timeout de connexion au Gateway")
+                self.monitor.on_disconnect()
+                
+            except websockets.exceptions.ConnectionClosedOK as e:
+                logger.info(f"✅ Connexion fermée proprement")
+                logger.info(f"   Code: {e.code}")
+                logger.info(f"   Raison: {e.reason or 'Non spécifiée'}")
+                self.monitor.on_disconnect()
+                
+            except websockets.exceptions.ConnectionClosedError as e:
+                logger.error(f"❌ Connexion fermée avec erreur")
+                logger.error(f"   Code: {e.code}")
+                logger.error(f"   Raison: {e.reason or 'Non spécifiée'}")
+                self.log_close_code(e.code)
+                self.monitor.on_disconnect()
+                
+            except websockets.exceptions.ConnectionClosed as e:
+                logger.warning(f"⚠️ Connexion fermée: {e.reason or 'no close frame received or sent'}")
+                if hasattr(e, 'code'):
+                    logger.warning(f"   Code: {e.code}")
+                    self.log_close_code(e.code)
+                logger.warning(f"   Raison: {e.reason or 'Non spécifiée'}")
+                self.monitor.on_disconnect()
+                
+            except Exception as e:
+                logger.error(f"❌ Erreur inattendue: {type(e).__name__}: {e}")
+                self.monitor.on_disconnect()
+            
+            finally:
+                if self.heartbeat_task:
+                    self.heartbeat_task.cancel()
+            
+            # Reconnexion avec backoff exponentiel
+            if self.should_reconnect and self.reconnect_count < max_retries:
+                self.reconnect_count += 1
+                delay = retry_delays[min(self.reconnect_count - 1, len(retry_delays) - 1)]
+                
+                # Délai supplémentaire si trop de déconnexions rapides
+                if self.monitor.disconnections > 20:
+                    extra_delay = min(self.monitor.disconnections * 2, 120)
+                    logger.warning(f"⚠️ Trop de déconnexions ({self.monitor.disconnections}), ajout de {extra_delay}s")
+                    delay += extra_delay
+                
+                logger.info(f"🔄 Reconnexion dans {delay}s... (tentative {self.reconnect_count}/{max_retries})")
+                await asyncio.sleep(delay)
+        
+        if self.reconnect_count >= max_retries:
+            logger.critical("💀 Nombre maximum de reconnexions atteint")
+
+    async def identify(self):
+        """Envoie le payload d'identification avec Rich Presence"""
+        # Vérification du token
+        if not self.token or len(self.token) < 50:
+            logger.error("❌ Token invalide ou trop court")
+            raise ValueError("Token Discord invalide")
+        
+        payload = {
+            "op": 2,
+            "d": {
+                "token": self.token,
+                "properties": {
+                    "os": "windows",
+                    "browser": "chrome",
+                    "device": "pc"
+                },
+                "compress": False,
+                "large_threshold": 250,
+                "presence": self._get_presence_payload()
+            }
+        }
+        await self.ws.send(json.dumps(payload))
+        logger.info("📤 Identification avec Rich Presence envoyée")
     
-    @discord.ui.button(label="⬅️ Retour", style=discord.ButtonStyle.secondary, row=1)
-    async def back(self, interaction: discord.Interaction, button: discord.ui.Button):
-        embed = discord.Embed(
-            title="🎨 Recherche Photo de Profil",
-            description=f"**{len(CATEGORIES)}** catégories!",
-            color=discord.Color.blue()
-        )
-        await interaction.response.edit_message(embed=embed, view=CategoryView())
+    def _get_presence_payload(self):
+        """Retourne le payload de présence (simple ou complet)"""
+        if self.use_simple_presence:
+            # Version simplifiée pour tester
+            return {
+                "status": "online",
+                "activities": [],
+                "since": None,
+                "afk": False
+            }
+        
+        # Version complète avec Rich Presence
+        return {
+            "status": "online",
+            "activities": [
+                {
+                    "type": 5,
+                    "application_id": CLIENT_ID,
+                    "name": "B2 🌍",
+                    "details": "🎄 restez branché 🎄",
+                    "state": "B2 ON TOP 🍇",
+                    "assets": {
+                        "large_image": IMAGE_NAME,
+                        "large_text": "B2 Community"
+                    },
+                    "buttons": ["👑 CROWN", "🔫 GUNS.LOL"],
+                    "metadata": {
+                        "button_urls": [
+                            "https://discord.gg/bC8Jcjdr3H",
+                            "https://guns.lol/17h40"
+                        ]
+                    }
+                }
+            ],
+            "since": None,
+            "afk": False
+        }
+
+    async def update_presence(self):
+        """Met à jour la Rich Presence"""
+        payload = {
+            "op": 3,
+            "d": {
+                "status": "online",
+                "activities": [
+                    {
+                        "type": 5,
+                        "application_id": CLIENT_ID,
+                        "name": "B2 🌍",
+                        "details": "🎄 restez branché 🎄",
+                        "state": "B2 ON TOP 🍇",
+                        "assets": {
+                            "large_image": IMAGE_NAME,
+                            "large_text": "B2 Community"
+                        },
+                        "buttons": ["👑 CROWN", "🔫 GUNS.LOL"],
+                        "metadata": {
+                            "button_urls": [
+                                "https://discord.gg/bC8Jcjdr3H",
+                                "https://guns.lol/17h40"
+                            ]
+                        }
+                    }
+                ],
+                "since": None,
+                "afk": False
+            }
+        }
+        await self.ws.send(json.dumps(payload))
+        logger.info("✅ Rich Presence mise à jour")
+
+    async def send_heartbeat(self):
+        """Envoie des heartbeats réguliers avec timeout"""
+        while True:
+            try:
+                await asyncio.sleep(self.heartbeat_interval / 1000)
+                
+                # Vérifier si le dernier heartbeat a reçu un ACK
+                if not self.last_heartbeat_ack:
+                    logger.warning("⚠️ Aucun ACK reçu pour le dernier heartbeat")
+                    await self.ws.close(code=1000, reason="Heartbeat timeout")
+                    break
+                
+                self.last_heartbeat_ack = False
+                
+                # Envoyer le heartbeat avec timeout
+                heartbeat = {"op": 1, "d": self.sequence}
+                
+                await asyncio.wait_for(
+                    self.ws.send(json.dumps(heartbeat)),
+                    timeout=self.heartbeat_timeout
+                )
+                
+                logger.debug(f"💓 Heartbeat envoyé (seq: {self.sequence})")
+                
+            except asyncio.TimeoutError:
+                logger.error("❌ Timeout lors de l'envoi du heartbeat")
+                await self.ws.close(code=1000, reason="Heartbeat send timeout")
+                break
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                logger.error(f"❌ Erreur heartbeat: {e}")
+                break
+
+    async def listen(self):
+        """Écoute les messages du Gateway Discord"""
+        async for message in self.ws:
+            try:
+                data = json.loads(message)
+                op = data.get("op")
+                d = data.get("d")
+                
+                if data.get("s"):
+                    self.sequence = data["s"]
+                
+                # Hello - démarre le heartbeat
+                if op == 10:
+                    self.heartbeat_interval = d["heartbeat_interval"]
+                    logger.info(f"💓 Intervalle heartbeat: {self.heartbeat_interval}ms")
+                    self.heartbeat_task = asyncio.create_task(self.send_heartbeat())
+                
+                # Dispatch - événements Discord
+                elif op == 0:
+                    event_type = data.get("t")
+                    
+                    if event_type == "READY":
+                        user = d.get("user", {})
+                        username = user.get("username", "Inconnu")
+                        logger.info(f"🎉 Connecté en tant que: {username} (ID: {user.get('id')})")
+                        self.session_id = d.get("session_id")
+                        await self.update_presence()
+                        
+                    elif event_type == "RESUMED":
+                        logger.info("🔄 Session reprise")
+                
+                # Heartbeat ACK
+                elif op == 11:
+                    self.last_heartbeat_ack = True
+                    logger.debug("✅ Heartbeat ACK reçu")
+                
+                # Demande de heartbeat immédiat
+                elif op == 1:
+                    await self.ws.send(json.dumps({"op": 1, "d": self.sequence}))
+                
+                # Session invalide
+                elif op == 9:
+                    can_resume = d if isinstance(d, bool) else False
+                    if can_resume:
+                        await self.resume()
+                    else:
+                        logger.warning("⚠️ Session invalide, reconnexion...")
+                        await asyncio.sleep(5)
+                        await self.identify()
+                
+                # Reconnect demandé
+                elif op == 7:
+                    logger.warning("🔄 Reconnexion demandée par Discord")
+                    raise websockets.exceptions.ConnectionClosed(1000, "Reconnect requested")
+                
+            except json.JSONDecodeError:
+                logger.error("❌ Erreur décodage JSON")
+            except Exception as e:
+                logger.error(f"❌ Erreur lors du traitement: {e}")
+
+    async def resume(self):
+        """Reprend une session existante"""
+        if not self.session_id:
+            return
+        
+        payload = {
+            "op": 6,
+            "d": {
+                "token": self.token,
+                "session_id": self.session_id,
+                "seq": self.sequence
+            }
+        }
+        await self.ws.send(json.dumps(payload))
+        logger.info("📤 Reprise de session")
+
+    async def close(self):
+        """Ferme proprement la connexion"""
+        self.should_reconnect = False
+        if self.heartbeat_task:
+            self.heartbeat_task.cancel()
+        if self.ws:
+            await self.ws.close()
+        logger.info("👋 Connexion fermée")
+
+
+async def main():
+    """Fonction principale"""
+    token = os.getenv("DISCORD_TOKEN")
     
-    @discord.ui.button(label="🎲 Aléatoire", style=discord.ButtonStyle.success, row=1)
-    async def random_tag(self, interaction: discord.Interaction, button: discord.ui.Button):
-        tag = random.choice(self.tags)
-        
-        await interaction.response.edit_message(
-            content=f"📌 Chargement...",
-            embed=None,
-            view=None
-        )
-        
-        image_url = await get_image(self.category, tag)
-        
-        if image_url:
-            embed = create_embed(tag.title(), image_url, self.category)
-            view = RefreshView(self.category, tag)
-            await interaction.edit_original_response(content=None, embed=embed, view=view)
-
-class RefreshView(discord.ui.View):
-    def __init__(self, category: str, tag: str):
-        super().__init__(timeout=180)
-        self.category = category
-        self.tag = tag
-    
-    @discord.ui.button(label="🔄 Autre", style=discord.ButtonStyle.primary)
-    async def refresh(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await interaction.response.edit_message(content="📌 Nouvelle image...", embed=None, view=None)
-        
-        image_url = await get_image(self.category, self.tag)
-        
-        if image_url:
-            embed = create_embed(self.tag.title(), image_url, self.category)
-            await interaction.edit_original_response(embed=embed, view=self)
-    
-    @discord.ui.button(label="⬅️ Menu", style=discord.ButtonStyle.secondary)
-    async def back(self, interaction: discord.Interaction, button: discord.ui.Button):
-        embed = discord.Embed(
-            title="🎨 Recherche Photo de Profil",
-            description=f"**{len(CATEGORIES)}** catégories!",
-            color=discord.Color.blue()
-        )
-        await interaction.response.edit_message(embed=embed, view=CategoryView())
-
-# ========================================
-# COMMANDES
-# ========================================
-@bot.event
-async def on_ready():
-    logger.info(f'✅ {bot.user} connecté!')
-    logger.info(f'📊 {len(bot.guilds)} serveurs')
-    logger.info(f'🎨 {len(CATEGORIES)} catégories')
-
-@bot.command(name='pdp')
-async def search_pfp(ctx):
-    """Commande principale"""
-    embed = discord.Embed(
-        title="🎨 Recherche Photo de Profil",
-        description=f"**{len(CATEGORIES)} catégories** disponibles!",
-        color=discord.Color.red()
-    )
-    await ctx.send(embed=embed, view=CategoryView())
-
-@bot.command(name='random')
-async def random_image(ctx, category: str = None):
-    """Image aléatoire"""
-    if not category or category not in CATEGORIES:
-        cats = ", ".join(CATEGORIES.keys())
-        await ctx.send(f"❌ Catégories: {cats}")
+    if not token:
+        logger.error("❌ Variable DISCORD_TOKEN manquante")
+        logger.info("💡 Ajoute ton token dans les Secrets (Replit)")
         return
-    
-    tags = CATEGORIES[category]['tags']
-    tag = random.choice(tags)
-    msg = await ctx.send(f"📌 Chargement...")
-    
-    image_url = await get_image(category, tag)
-    
-    if image_url:
-        embed = create_embed(tag.title(), image_url, category)
-        view = RefreshView(category, tag)
-        await msg.edit(content=None, embed=embed, view=view)
-    else:
-        await msg.edit(content="❌ Erreur")
 
-@bot.command(name='ping')
-async def ping(ctx):
-    """Test de latence"""
-    latency = round(bot.latency * 1000)
-    await ctx.send(f'🏓 Pong! {latency}ms')
-
-@bot.command(name='aide')
-async def help_cmd(ctx):
-    """Aide"""
-    embed = discord.Embed(title="📚 Aide", color=discord.Color.green())
-    embed.add_field(name="!pdp", value="🎨 Recherche interactive", inline=False)
-    embed.add_field(name="!random <catégorie>", value="🎲 Image aléatoire", inline=False)
-    embed.add_field(name="!ping", value="🏓 Test latence", inline=False)
-    await ctx.send(embed=embed)
-
-# ========================================
-# LANCEMENT - VERSION WEB SERVICE
-# ========================================
-if __name__ == '__main__':
-    if not DISCORD_TOKEN:
-        logger.error("❌ DISCORD_TOKEN manquant!")
-        sys.exit(1)
+    logger.info("🚀 Démarrage du selfbot Discord avec Rich Presence...")
+    logger.warning("⚠️ Les selfbots violent les CGU de Discord - utilisez à vos risques")
     
-    logger.info("🚀 Démarrage...")
+    keep_alive()
     
-    # Lancer Flask dans un thread (OBLIGATOIRE pour Web Service)
-    Thread(target=run_flask, daemon=True).start()
+    bot = DiscordSelfbot(token)
     
-    # Lancer le bot Discord
     try:
-        bot.run(DISCORD_TOKEN)
-    except Exception as e:
-        logger.critical(f"❌ Erreur: {e}")
-        sys.exit(1)
+        await bot.connect()
+    except KeyboardInterrupt:
+        logger.info("⏹️ Arrêt demandé")
+        await bot.close()
+
+
+if __name__ == "__main__":
+    try:
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        logger.info("👋 Programme arrêté")
