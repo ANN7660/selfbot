@@ -9,7 +9,7 @@ from threading import Thread
 
 # Configuration
 CLIENT_ID = '1442957097385066707'
-IMAGE_NAME = 'logo_b2'
+IMAGE_URL = 'https://cdn.discordapp.com/attachments/1425083330251980840/1446325666273427588/IMG_0464.jpg'
 GATEWAY_URL = "wss://gateway.discord.gg/?v=10&encoding=json"
 
 # Configuration du logging
@@ -124,12 +124,14 @@ class DiscordSelfbot:
                 "presence": {
                     "status": "online",
                     "activities": [{
-                        "type": 2,
-                        "name": "hk",
-                        "application_id": CLIENT_ID,
+                        "type": 0,
+                        "name": "🎄",
+                        "state": "hk",
                         "assets": {
-                            "large_image": IMAGE_NAME,
-                            "large_text": "B2"
+                            "large_image": IMAGE_URL,
+                            "large_text": "B2",
+                            "small_image": IMAGE_URL,
+                            "small_text": "En ligne"
                         },
                         "buttons": ["👑", "🔫"],
                         "metadata": {
@@ -195,9 +197,9 @@ class DiscordSelfbot:
                     "name": "hk",
                     "application_id": CLIENT_ID,
                     "assets": {
-                        "large_image": IMAGE_NAME,
+                        "large_image": IMAGE_URL,
                         "large_text": "B2",
-                        "small_image": IMAGE_NAME,
+                        "small_image": IMAGE_URL,
                         "small_text": "En ligne"
                     },
                     "buttons": ["👑", "🔫"],
@@ -275,7 +277,7 @@ class DiscordSelfbot:
 async def main():
     """Fonction principale"""
     token = os.getenv("DISCORD_TOKEN")
-
+    
     if not token:
         logger.error("❌ DISCORD_TOKEN non défini dans les variables d'environnement")
         return
@@ -298,7 +300,7 @@ async def main():
 if __name__ == "__main__":
     keep_alive()
     time.sleep(2)
-
+    
     try:
         asyncio.run(main())
     except KeyboardInterrupt:
