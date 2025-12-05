@@ -194,14 +194,14 @@ class DiscordSelfbot:
                 "status": "online",
                 "activities": [{
                     "type": 2,
-                    "name": "r",
-                    "details": "hk 🎄",
+                    "name": "hk jtm",
+                    "details": "🎄",
                     "application_id": CLIENT_ID,
                     "assets": {
                         "large_image": IMAGE_URL,
-                        "large_text": "debian 🎄",
+                        "large_text": ".",
                         "small_image": IMAGE_URL,
-                        "small_text": "debian 🎄"
+                        "small_text": "."
                     },
                     "buttons": ["👑", "🔫"],
                     "metadata": {
