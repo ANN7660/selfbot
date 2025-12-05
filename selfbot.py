@@ -9,7 +9,7 @@ from threading import Thread
 
 # Configuration
 CLIENT_ID = '1442957097385066707'
-IMAGE_URL = 'https://cdn.discordapp.com/attachments/1425083330251980840/1446325666273427588/IMG_0464.jpg'
+IMAGE_URL = 'hk_logo'
 GATEWAY_URL = "wss://gateway.discord.gg/?v=10&encoding=json"
 
 # Configuration du logging
@@ -126,12 +126,12 @@ class DiscordSelfbot:
                     "activities": [{
                         "type": 0,
                         "name": "🎄",
-                        "state": "hk",
+                        "details": "hk 🎄",
                         "assets": {
                             "large_image": IMAGE_URL,
-                            "large_text": "B2",
+                            "large_text": "hk 🎄",
                             "small_image": IMAGE_URL,
-                            "small_text": "En ligne"
+                            "small_text": "hk 🎄"
                         },
                         "buttons": ["👑", "🔫"],
                         "metadata": {
@@ -194,13 +194,14 @@ class DiscordSelfbot:
                 "status": "online",
                 "activities": [{
                     "type": 2,
-                    "name": "hk",
+                    "name": "r",
+                    "details": "hk 🎄",
                     "application_id": CLIENT_ID,
                     "assets": {
                         "large_image": IMAGE_URL,
-                        "large_text": "B2",
+                        "large_text": "debian 🎄",
                         "small_image": IMAGE_URL,
-                        "small_text": "En ligne"
+                        "small_text": "debian 🎄"
                     },
                     "buttons": ["👑", "🔫"],
                     "metadata": {
